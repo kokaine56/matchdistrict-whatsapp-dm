@@ -65,6 +65,145 @@ app.use('/css', express.static(path.join(PUBLIC_DIR, 'css')));
 app.use('/js', express.static(path.join(PUBLIC_DIR, 'js')));
 
 // ==========================================
+// 3. PUBLIC META WEBHOOK ROUTES (NO AUTH)
+// ==========================================
+
+// Webhook Verification (GET /webhook)
+app.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
+
+  if (verifyToken && mode === 'subscribe' && typeof token === 'string' && token.trim() === verifyToken.trim() && challenge !== undefined) {
+    return res.status(200).type('text/plain').send(String(challenge));
+  }
+
+  return res.sendStatus(403);
+});
+
+// In-memory bounded deduplication for Meta retries. Status transitions are distinct events.
+const processedEventIds = new Set();
+function markEventProcessed(id) {
+  if (processedEventIds.has(id)) return false;
+  processedEventIds.add(id);
+  if (processedEventIds.size > 5000) processedEventIds.delete(processedEventIds.values().next().value);
+  return true;
+}
+
+function hasValidMetaSignature(req) {
+  const secret = process.env.META_APP_SECRET;
+  const signature = req.get('x-hub-signature-256');
+  if (!secret || !signature || !req.rawBody || !/^sha256=[a-f0-9]{64}$/i.test(signature)) return false;
+  const expected = `sha256=${createHmac('sha256', secret).update(req.rawBody).digest('hex')}`;
+  const suppliedBytes = Buffer.from(signature, 'utf8');
+  const expectedBytes = Buffer.from(expected, 'utf8');
+  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
+}
+
+// Webhook Receiver (POST /webhook)
+// Handles incoming user messages & interactive button taps
+app.post('/webhook', (req, res) => {
+  if (!hasValidMetaSignature(req)) return res.sendStatus(401);
+  // Acknowledge promptly; processing continues after the response.
+  res.sendStatus(200);
+
+  const body = req.body;
+  if (!body || body.object !== 'whatsapp_business_account') {
+    return;
+  }
+
+  void (async () => { try {
+    const config = await loadConfig();
+    const autoReplyConfig = config.autoReply || {};
+    const entries = body.entry || [];
+
+    for (const entry of entries) {
+      const changes = entry.changes || [];
+      for (const change of changes) {
+        const value = change.value || {};
+        for (const status of value.statuses || []) {
+          const eventId = `status:${status.id}:${status.status}:${status.timestamp || ''}`;
+          if (!markEventProcessed(eventId)) continue;
+          // Log only provider message ID and state; recipient data and credentials stay private.
+          console.log(`[Webhook Status] message=${String(status.id || '').slice(0, 80)} status=${String(status.status || 'unknown').slice(0, 20)}`);
+          if (status.status === 'failed') {
+            const codes = (status.errors || []).map(error => error.code).filter(Number.isFinite);
+            console.warn(`[Webhook Status Failed] message=${String(status.id || '').slice(0, 80)} codes=${codes.join(',') || 'unspecified'}`);
+          }
+        }
+
+        const messages = value.messages;
+
+        if (Array.isArray(messages) && messages.length > 0) {
+          for (const msg of messages) {
+            if (msg.id && !markEventProcessed(`message:${msg.id}`)) continue;
+
+            const senderPhone = msg.from;
+            console.log(`[Webhook Message] Received type=${String(msg.type || 'unknown').slice(0, 20)}`);
+
+            // 1. Check if user tapped an interactive reply button or quick-reply button
+            let tappedButtonId = null;
+            let tappedButtonText = null;
+
+            if (msg.type === 'interactive' && msg.interactive?.button_reply) {
+              tappedButtonId = msg.interactive.button_reply.id;
+              tappedButtonText = msg.interactive.button_reply.title;
+            } else if (msg.type === 'button' && msg.button) {
+              tappedButtonId = msg.button.payload;
+              tappedButtonText = msg.button.text;
+            }
+
+            // If a button was tapped, check if there's a configured follow-up reply for that button
+            let handledAsButtonTap = false;
+            if (tappedButtonId || tappedButtonText) {
+              const configuredButtons = autoReplyConfig.buttons || [];
+              const matchedBtn = configuredButtons.find(b =>
+                (tappedButtonId && b.id === tappedButtonId) ||
+                (tappedButtonText && b.title?.toLowerCase() === tappedButtonText.toLowerCase())
+              );
+
+              if (matchedBtn && matchedBtn.reply) {
+                handledAsButtonTap = true;
+                console.log('[Webhook] Configured button reply matched. Sending follow-up reply.');
+                try {
+                  // Follow-up reply to button tap (does NOT count toward 800 cap)
+                  await sendTextMessage({
+                    to: senderPhone,
+                    text: matchedBtn.reply
+                  });
+                  console.log('[Webhook] Follow-up reply sent.');
+                } catch (err) {
+                  console.error('[Webhook Button Reply Error] Could not send configured button reply.');
+                }
+              }
+            }
+
+            // 2. If not handled as button tap, send standard configured auto-reply
+            if (!handledAsButtonTap) {
+              console.log('[Webhook] Sending configured auto-reply.');
+              try {
+                // Auto-reply to user response (does NOT count toward 800 cap)
+                await sendConfiguredAutoReply({
+                  to: senderPhone,
+                  autoReplyConfig
+                });
+                console.log('[Webhook] Auto-reply sent.');
+              } catch (err) {
+                console.error('[Webhook Auto-Reply Error] Could not send configured auto-reply.');
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Webhook Processing Error] Event processing failed.');
+  } })();
+});
+
+
+// ==========================================
 // 1. AUTHENTICATION ROUTES
 // ==========================================
 
@@ -231,144 +370,6 @@ app.post('/send-campaign', requireAuth, async (req, res) => {
     console.error('[Send Campaign Error]', err.message);
     res.status(500).json({ error: err.message });
   }
-});
-
-// ==========================================
-// 3. PUBLIC META WEBHOOK ROUTES (NO AUTH)
-// ==========================================
-
-// Webhook Verification (GET /webhook)
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
-
-  if (verifyToken && mode === 'subscribe' && token === verifyToken && challenge !== undefined) {
-    return res.status(200).type('text/plain').send(String(challenge));
-  }
-
-  return res.sendStatus(403);
-});
-
-// In-memory bounded deduplication for Meta retries. Status transitions are distinct events.
-const processedEventIds = new Set();
-function markEventProcessed(id) {
-  if (processedEventIds.has(id)) return false;
-  processedEventIds.add(id);
-  if (processedEventIds.size > 5000) processedEventIds.delete(processedEventIds.values().next().value);
-  return true;
-}
-
-function hasValidMetaSignature(req) {
-  const secret = process.env.META_APP_SECRET;
-  const signature = req.get('x-hub-signature-256');
-  if (!secret || !signature || !req.rawBody || !/^sha256=[a-f0-9]{64}$/i.test(signature)) return false;
-  const expected = `sha256=${createHmac('sha256', secret).update(req.rawBody).digest('hex')}`;
-  const suppliedBytes = Buffer.from(signature, 'utf8');
-  const expectedBytes = Buffer.from(expected, 'utf8');
-  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
-}
-
-// Webhook Receiver (POST /webhook)
-// Handles incoming user messages & interactive button taps
-app.post('/webhook', (req, res) => {
-  if (!hasValidMetaSignature(req)) return res.sendStatus(401);
-  // Acknowledge promptly; processing continues after the response.
-  res.sendStatus(200);
-
-  const body = req.body;
-  if (!body || body.object !== 'whatsapp_business_account') {
-    return;
-  }
-
-  void (async () => { try {
-    const config = await loadConfig();
-    const autoReplyConfig = config.autoReply || {};
-    const entries = body.entry || [];
-
-    for (const entry of entries) {
-      const changes = entry.changes || [];
-      for (const change of changes) {
-        const value = change.value || {};
-        for (const status of value.statuses || []) {
-          const eventId = `status:${status.id}:${status.status}:${status.timestamp || ''}`;
-          if (!markEventProcessed(eventId)) continue;
-          // Log only provider message ID and state; recipient data and credentials stay private.
-          console.log(`[Webhook Status] message=${String(status.id || '').slice(0, 80)} status=${String(status.status || 'unknown').slice(0, 20)}`);
-          if (status.status === 'failed') {
-            const codes = (status.errors || []).map(error => error.code).filter(Number.isFinite);
-            console.warn(`[Webhook Status Failed] message=${String(status.id || '').slice(0, 80)} codes=${codes.join(',') || 'unspecified'}`);
-          }
-        }
-
-        const messages = value.messages;
-
-        if (Array.isArray(messages) && messages.length > 0) {
-          for (const msg of messages) {
-            if (msg.id && !markEventProcessed(`message:${msg.id}`)) continue;
-
-            const senderPhone = msg.from;
-            console.log(`[Webhook Message] Received type=${String(msg.type || 'unknown').slice(0, 20)}`);
-
-            // 1. Check if user tapped an interactive reply button or quick-reply button
-            let tappedButtonId = null;
-            let tappedButtonText = null;
-
-            if (msg.type === 'interactive' && msg.interactive?.button_reply) {
-              tappedButtonId = msg.interactive.button_reply.id;
-              tappedButtonText = msg.interactive.button_reply.title;
-            } else if (msg.type === 'button' && msg.button) {
-              tappedButtonId = msg.button.payload;
-              tappedButtonText = msg.button.text;
-            }
-
-            // If a button was tapped, check if there's a configured follow-up reply for that button
-            let handledAsButtonTap = false;
-            if (tappedButtonId || tappedButtonText) {
-              const configuredButtons = autoReplyConfig.buttons || [];
-              const matchedBtn = configuredButtons.find(b =>
-                (tappedButtonId && b.id === tappedButtonId) ||
-                (tappedButtonText && b.title?.toLowerCase() === tappedButtonText.toLowerCase())
-              );
-
-              if (matchedBtn && matchedBtn.reply) {
-                handledAsButtonTap = true;
-                console.log('[Webhook] Configured button reply matched. Sending follow-up reply.');
-                try {
-                  // Follow-up reply to button tap (does NOT count toward 800 cap)
-                  await sendTextMessage({
-                    to: senderPhone,
-                    text: matchedBtn.reply
-                  });
-                  console.log('[Webhook] Follow-up reply sent.');
-                } catch (err) {
-                  console.error('[Webhook Button Reply Error] Could not send configured button reply.');
-                }
-              }
-            }
-
-            // 2. If not handled as button tap, send standard configured auto-reply
-            if (!handledAsButtonTap) {
-              console.log('[Webhook] Sending configured auto-reply.');
-              try {
-                // Auto-reply to user response (does NOT count toward 800 cap)
-                await sendConfiguredAutoReply({
-                  to: senderPhone,
-                  autoReplyConfig
-                });
-                console.log('[Webhook] Auto-reply sent.');
-              } catch (err) {
-                console.error('[Webhook Auto-Reply Error] Could not send configured auto-reply.');
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[Webhook Processing Error] Event processing failed.');
-  } })();
 });
 
 // Start Server
