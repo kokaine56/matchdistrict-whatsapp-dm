@@ -14,7 +14,7 @@ import {
   COOKIE_NAME
 } from './auth.js';
 import { loadConfig, saveConfig } from './config.js';
-import { runCampaign, getRecipientsSummary, CSV_FILE } from './campaign.js';
+import { runCampaign, getRecipientsSummary, addRecipientsToCsv, CSV_FILE } from './campaign.js';
 import { getCurrentMonthKey, getMonthSentCount } from './tracker.js';
 import { sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
@@ -53,6 +53,7 @@ const uploadCsv = multer({ storage: csvStorage });
 
 // Middleware
 app.use(express.json({
+  limit: '3mb',
   verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); }
 }));
 app.use(express.urlencoded({ extended: true }));
@@ -317,6 +318,21 @@ app.get('/api/recipients', requireAuth, async (req, res) => {
     res.json(summary);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Add recipients manually while preserving the existing CSV list.
+app.post('/api/recipients', requireAuth, async (req, res) => {
+  try {
+    const numbers = String(req.body?.numbers || '')
+      .split(/[\n,;]+/)
+      .map(number => number.trim())
+      .filter(Boolean);
+    const result = await addRecipientsToCsv(numbers, req.body?.optedIn === true);
+    const summary = await getRecipientsSummary();
+    res.json({ status: 'ok', ...result, summary });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

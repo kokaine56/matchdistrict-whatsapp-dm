@@ -53,6 +53,9 @@ const linkUrlInput = document.getElementById('linkUrl');
 // Recipients Elements
 const recipientsCsvFile = document.getElementById('recipientsCsvFile');
 const btnUploadCsv = document.getElementById('btnUploadCsv');
+const manualRecipientNumbers = document.getElementById('manualRecipientNumbers');
+const manualRecipientsOptedIn = document.getElementById('manualRecipientsOptedIn');
+const btnAddRecipients = document.getElementById('btnAddRecipients');
 const totalRecipientsCount = document.getElementById('totalRecipientsCount');
 const optedInCount = document.getElementById('optedInCount');
 const optedOutCount = document.getElementById('optedOutCount');
@@ -205,15 +208,20 @@ async function loadRecipients() {
 
   currentRecipients.preview.forEach((r, idx) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${idx + 1}</td>
-      <td><strong>${r.phone}</strong></td>
-      <td>
-        <span class="badge-tag ${r.optedIn ? 'badge-success' : 'badge-danger'}">
-          ${r.optedIn ? 'Opted In ✓' : 'Opted Out ✗'}
-        </span>
-      </td>
-    `;
+    const numberCell = document.createElement('td');
+    const number = document.createElement('strong');
+    number.textContent = r.phone;
+    numberCell.append(number);
+
+    const statusCell = document.createElement('td');
+    const status = document.createElement('span');
+    status.className = `badge-tag ${r.optedIn ? 'badge-success' : 'badge-danger'}`;
+    status.textContent = r.optedIn ? 'Opted In ✓' : 'Opted Out ✗';
+    statusCell.append(status);
+
+    const indexCell = document.createElement('td');
+    indexCell.textContent = String(idx + 1);
+    tr.append(indexCell, numberCell, statusCell);
     recipientsTableBody.appendChild(tr);
   });
 }
@@ -368,6 +376,35 @@ recipientsCsvFile.addEventListener('change', async () => {
   } finally {
     btnUploadCsv.textContent = 'Upload & Replace CSV';
     recipientsCsvFile.value = '';
+  }
+});
+
+btnAddRecipients.addEventListener('click', async () => {
+  const numbers = manualRecipientNumbers.value.trim();
+  if (!numbers) {
+    showAlert('Enter at least one phone number.', 'danger');
+    return;
+  }
+
+  btnAddRecipients.disabled = true;
+  btnAddRecipients.textContent = 'Adding...';
+  try {
+    const res = await fetch('/api/recipients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numbers, optedIn: manualRecipientsOptedIn.checked })
+    });
+    const data = await res.json();
+    if (res.status === 401) return (window.location.href = '/login');
+    if (!res.ok) throw new Error(data.error || 'Could not add recipients');
+    manualRecipientNumbers.value = '';
+    await loadRecipients();
+    showAlert(`Added ${data.added} number(s); skipped ${data.skipped} duplicate(s).`);
+  } catch (err) {
+    showAlert('Could not add numbers: ' + err.message, 'danger');
+  } finally {
+    btnAddRecipients.disabled = false;
+    btnAddRecipients.textContent = 'Add to Recipients List';
   }
 });
 

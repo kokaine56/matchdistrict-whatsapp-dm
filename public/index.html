@@ -258,6 +258,17 @@
           <p class="help-text">Phone numbers must include country code. Only opted_in=true numbers are sent to.</p>
         </div>
 
+        <div class="form-group manual-recipient-form">
+          <label for="manualRecipientNumbers">Add phone numbers manually</label>
+          <textarea id="manualRecipientNumbers" placeholder="+15551234567&#10;+919876543210" rows="4"></textarea>
+          <p class="help-text">Enter one number per line, or separate numbers with commas. Include each country code.</p>
+          <label class="checkbox-label">
+            <input type="checkbox" id="manualRecipientsOptedIn">
+            These contacts have opted in to receive WhatsApp messages
+          </label>
+          <button type="button" class="btn btn-primary" id="btnAddRecipients">Add to Recipients List</button>
+        </div>
+
         <!-- Summary Counts -->
         <div class="recipients-summary">
           <div class="summary-chip">

@@ -259,6 +259,24 @@ textarea {
   margin-top: 0.3rem;
 }
 
+.manual-recipient-form {
+  border-top: 1px solid var(--border-color);
+  padding-top: 1.25rem;
+}
+
+.manual-recipient-form .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.75rem 0 1rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.manual-recipient-form .checkbox-label input {
+  accent-color: var(--wa-teal);
+}
+
 /* Upload Row */
 .upload-row {
   display: flex;

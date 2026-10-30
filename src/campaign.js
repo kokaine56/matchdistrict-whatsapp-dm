@@ -62,6 +62,45 @@ export async function getRecipientsSummary() {
   };
 }
 
+/** Append manually entered recipients without replacing the uploaded CSV. */
+export async function addRecipientsToCsv(rawNumbers, optedIn = false) {
+  if (!Array.isArray(rawNumbers) || rawNumbers.length === 0) {
+    throw new Error('Enter at least one phone number.');
+  }
+
+  const normalizedNumbers = rawNumbers.map(value => String(value || '').trim());
+  const invalid = normalizedNumbers.filter(value => {
+    const digits = value.replace(/\D/g, '');
+    return digits.length < 7 || digits.length > 15;
+  });
+  if (invalid.length > 0) {
+    throw new Error(`Invalid phone number(s): ${invalid.join(', ')}`);
+  }
+
+  const current = await readRecipientsFromCsv();
+  const existingNumbers = new Set(current.map(recipient => recipient.phone.replace(/\D/g, '')));
+  const added = [];
+  const skipped = [];
+  for (const value of normalizedNumbers) {
+    const digits = value.replace(/\D/g, '');
+    if (existingNumbers.has(digits)) {
+      skipped.push(value);
+      continue;
+    }
+    existingNumbers.add(digits);
+    added.push({ phone: value, optedIn: Boolean(optedIn) });
+  }
+
+  if (added.length > 0) {
+    const rows = [...current, ...added];
+    const escapeCsv = value => `"${String(value).replace(/"/g, '""')}"`;
+    const csv = ['phone,opted_in', ...rows.map(row => `${escapeCsv(row.phone)},${row.optedIn}`)].join('\n') + '\n';
+    await fs.promises.writeFile(CSV_FILE, csv, 'utf8');
+  }
+
+  return { added: added.length, skipped: skipped.length };
+}
+
 /**
  * Run bulk campaign send logic.
  */
