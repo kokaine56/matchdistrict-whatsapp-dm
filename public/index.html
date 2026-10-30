@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Outreach & Auto-Reply Console</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="brand">
+      <svg viewBox="0 0 24 24">
+        <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.53 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.26-1.5-1.4-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.15.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.35-.77-1.85-.2-.49-.4-.42-.56-.43h-.47c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.18-.48-.3"/>
+      </svg>
+      <h1>MatchDistrict Outreach</h1>
+      <span class="badge">Meta Cloud API</span>
+    </div>
+    <div class="header-actions">
+      <div class="usage-counter" id="usageCounter">
+        Monthly Cap: <strong id="sentCountDisplay">0</strong> / <span id="limitDisplay">800</span> used this month
+      </div>
+      <form action="/logout" method="POST" style="margin: 0;">
+        <button type="submit" class="btn-logout">Logout</button>
+      </form>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="globalAlert" style="display: none;" class="alert"></div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="campaign-tab">1. Campaign Message</button>
+      <button class="tab-btn" data-tab="autoreply-tab">2. Auto-Reply Rules</button>
+      <button class="tab-btn" data-tab="recipients-tab">3. Recipients & Send</button>
+    </div>
+
+    <!-- TAB 1: CAMPAIGN MESSAGE -->
+    <div id="campaign-tab" class="tab-content active">
+      <div class="grid-2">
+        <!-- Settings Form -->
+        <div class="card">
+          <h2 class="card-title">Campaign Template Settings</h2>
+          <form id="campaignForm">
+            <!-- Template Selection -->
+            <div class="form-group">
+              <label for="templateSelect">Approved Template</label>
+              <select id="templateSelect" required>
+                <option value="hello">hello (Hello Greeting)</option>
+                <option value="hi">hi (Hi Short Greeting)</option>
+                <option value="ek kam hai">ek kam hai (Ek Kam Hai Follow-up)</option>
+              </select>
+              <p class="help-text">Only Meta-approved templates can be sent as first outreach.</p>
+            </div>
+
+            <!-- Language Code -->
+            <div class="form-group">
+              <label for="languageCode">Language Code</label>
+              <input type="text" id="languageCode" value="en_US" placeholder="en_US">
+              <p class="help-text">Language code configured in Meta Manager (e.g. en_US, hi).</p>
+            </div>
+
+            <!-- Header Image -->
+            <div class="form-group">
+              <label>Header Image (Public URL or Upload)</label>
+              <div class="upload-row">
+                <input type="url" id="headerImageUrl" placeholder="https://example.com/banner.jpg">
+                <input type="file" id="headerImageFile" accept="image/*">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnUploadHeaderImg">Upload</button>
+              </div>
+              <p class="help-text">Uploads are saved in /uploads and served publicly for Meta.</p>
+            </div>
+
+            <!-- Body Variables -->
+            <div class="form-group">
+              <label>Body Variables ({{1}}, {{2}}...)</label>
+              <div id="variablesContainer" class="var-list">
+                <!-- Dynamic rows injected by JS -->
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" id="btnAddVariable">+ Add Variable</button>
+            </div>
+
+            <!-- URL Button Dynamic Value -->
+            <div class="form-group">
+              <label for="urlButtonValue">Dynamic URL Button Suffix / Value</label>
+              <input type="text" id="urlButtonValue" placeholder="e.g. promo2026 or referral-code">
+              <p class="help-text">Passed to templates configured with dynamic website buttons.</p>
+            </div>
+
+            <!-- Quick Reply Payloads -->
+            <div class="form-group">
+              <label>Quick Reply Payloads</label>
+              <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <input type="text" id="qrPayload0" placeholder="Payload 1 (e.g. YES)">
+                <input type="text" id="qrPayload1" placeholder="Payload 2 (e.g. NO)">
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Campaign Settings</button>
+          </form>
+        </div>
+
+        <!-- Live WhatsApp Simulator Preview -->
+        <div class="card">
+          <h2 class="card-title">Live Message Preview</h2>
+          <div class="preview-container">
+            <div class="preview-bubble">
+              <img id="previewImg" class="preview-header-img" style="display: none;" src="" alt="Header">
+              <div class="preview-body" id="previewText">Hello!</div>
+              <div class="preview-actions" id="previewActions">
+                <!-- Action buttons rendered dynamically -->
+              </div>
+              <div class="preview-meta">12:00 PM ✓✓</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: AUTO-REPLY RULES -->
+    <div id="autoreply-tab" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">Auto-Reply Configuration (24h Window)</h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">
+          Sent automatically when a recipient replies. User replies and auto-replies do not count toward the monthly limit.
+        </p>
+
+        <form id="autoReplyForm">
+          <!-- Type Selector -->
+          <label>Reply Format</label>
+          <div class="radio-group">
+            <div class="radio-card active" data-type="text">
+              <input type="radio" name="replyType" value="text" checked> Text Only
+            </div>
+            <div class="radio-card" data-type="image">
+              <input type="radio" name="replyType" value="image"> Image + Caption
+            </div>
+            <div class="radio-card" data-type="buttons">
+              <input type="radio" name="replyType" value="buttons"> Reply Buttons (up to 3)
+            </div>
+            <div class="radio-card" data-type="link">
+              <input type="radio" name="replyType" value="link"> CTA Link Button
+            </div>
+          </div>
+
+          <!-- Text Body -->
+          <div class="form-group">
+            <label for="autoReplyText">Message Text / Body</label>
+            <textarea id="autoReplyText" required placeholder="Hello! Thank you for reaching out..."></textarea>
+          </div>
+
+          <!-- Image settings (shown for image type) -->
+          <div id="imageReplyFields" class="form-group" style="display: none;">
+            <label>Image (URL or Upload)</label>
+            <div class="upload-row">
+              <input type="url" id="autoReplyImageUrl" placeholder="https://example.com/reply-banner.jpg">
+              <input type="file" id="autoReplyImageFile" accept="image/*">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnUploadReplyImg">Upload</button>
+            </div>
+            <div style="margin-top: 0.5rem;">
+              <label for="autoReplyCaption">Image Caption (Optional)</label>
+              <input type="text" id="autoReplyCaption" placeholder="Optional image caption">
+            </div>
+          </div>
+
+          <!-- Buttons & Follow-Up Replies (shown for buttons type) -->
+          <div id="buttonReplyFields" class="form-group" style="display: none;">
+            <label>Interactive Buttons & Individual Follow-up Replies (Max 3)</label>
+            <p class="help-text" style="margin-bottom: 0.75rem;">
+              When a user taps one of these buttons, the corresponding follow-up message will be sent back to them!
+            </p>
+
+            <div id="buttonsList" style="display: flex; flex-direction: column; gap: 1rem;">
+              <!-- 3 Button Config Blocks -->
+              <div class="card" style="background: var(--bg-primary); padding: 1rem; margin: 0;">
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <input type="text" id="btn1_id" value="btn_1" placeholder="Button 1 ID" style="width: 30%;">
+                  <input type="text" id="btn1_title" value="About Us" placeholder="Button 1 Label (Max 20 chars)" style="width: 70%;">
+                </div>
+                <label style="font-size: 0.75rem;">Follow-up reply when Button 1 is tapped:</label>
+                <textarea id="btn1_reply" style="min-height: 60px;" placeholder="Message sent when user taps Button 1..."></textarea>
+              </div>
+
+              <div class="card" style="background: var(--bg-primary); padding: 1rem; margin: 0;">
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <input type="text" id="btn2_id" value="btn_2" placeholder="Button 2 ID" style="width: 30%;">
+                  <input type="text" id="btn2_title" value="Support" placeholder="Button 2 Label (Max 20 chars)" style="width: 70%;">
+                </div>
+                <label style="font-size: 0.75rem;">Follow-up reply when Button 2 is tapped:</label>
+                <textarea id="btn2_reply" style="min-height: 60px;" placeholder="Message sent when user taps Button 2..."></textarea>
+              </div>
+
+              <div class="card" style="background: var(--bg-primary); padding: 1rem; margin: 0;">
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <input type="text" id="btn3_id" value="btn_3" placeholder="Button 3 ID (Optional)" style="width: 30%;">
+                  <input type="text" id="btn3_title" value="" placeholder="Button 3 Label (Optional)" style="width: 70%;">
+                </div>
+                <label style="font-size: 0.75rem;">Follow-up reply when Button 3 is tapped:</label>
+                <textarea id="btn3_reply" style="min-height: 60px;" placeholder="Message sent when user taps Button 3..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Link Button fields (shown for link type) -->
+          <div id="linkReplyFields" class="form-group" style="display: none;">
+            <label>Call-To-Action Link Button</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="text" id="linkTitle" placeholder="Button Label (e.g. Visit MatchDistrict)" style="width: 40%;">
+              <input type="url" id="linkUrl" placeholder="https://matchdistrict.com" style="width: 60%;">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Save Auto-Reply Rules</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- TAB 3: RECIPIENTS & DISPATCH -->
+    <div id="recipients-tab" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">Recipients List & Upload</h2>
+        
+        <!-- Upload CSV Box -->
+        <div class="form-group">
+          <label>Upload recipients.csv (Columns: phone, opted_in)</label>
+          <div class="upload-row">
+            <input type="file" id="recipientsCsvFile" accept=".csv">
+            <button type="button" class="btn btn-secondary" id="btnUploadCsv">Upload & Replace CSV</button>
+          </div>
+          <p class="help-text">Phone numbers must include country code. Only opted_in=true numbers are sent to.</p>
+        </div>
+
+        <!-- Summary Counts -->
+        <div class="recipients-summary">
+          <div class="summary-chip">
+            <span class="count" id="totalRecipientsCount">0</span>
+            <span class="help-text">Total in CSV</span>
+          </div>
+          <div class="summary-chip opted-in">
+            <span class="count" id="optedInCount">0</span>
+            <span class="help-text">Opted In (Eligible)</span>
+          </div>
+          <div class="summary-chip opted-out">
+            <span class="count" id="optedOutCount">0</span>
+            <span class="help-text">Opted Out (Skipped)</span>
+          </div>
+        </div>
+
+        <!-- Table Preview -->
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Phone Number</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="recipientsTableBody">
+              <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Loading recipients...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Send Campaign Action Card -->
+      <div class="card" style="border-color: var(--wa-teal);">
+        <h2 class="card-title" style="color: var(--wa-green);">Dispatch Campaign</h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+          Sends the approved template message to all eligible (opted-in) phone numbers. Hard capped at 800 unique users per calendar month.
+        </p>
+
+        <button type="button" class="btn btn-success" id="btnSendCampaign" style="padding: 0.85rem 1.75rem; font-size: 1rem;">
+          🚀 Send Campaign Now
+        </button>
+
+        <!-- Dispatch Results Container -->
+        <div id="resultsCard" style="display: none; margin-top: 1.5rem;">
+          <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Campaign Execution Summary</h3>
+          <div id="resultsAlert" class="alert"></div>
+
+          <div id="failedSection" style="display: none; margin-top: 1rem;">
+            <h4 style="color: var(--danger); font-size: 0.9rem; margin-bottom: 0.5rem;">Failed Numbers & Errors</h4>
+            <div class="table-wrap" style="max-height: 200px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Phone</th>
+                    <th>Error Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="failedTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal">
+      <h3 class="modal-title">Confirm Campaign Send</h3>
+      <p id="modalPromptText" style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1rem;">
+        Are you sure you want to send this template campaign?
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="btnModalCancel">Cancel</button>
+        <button type="button" class="btn btn-success" id="btnModalConfirm">Yes, Dispatch Now</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
+

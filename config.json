@@ -1,0 +1,38 @@
+{
+  "campaign": {
+    "template": "hello",
+    "languageCode": "en_US",
+    "headerImageUrl": "",
+    "bodyVariables": [],
+    "urlButtonValue": "",
+    "quickReplyPayloads": ["YES", "NO"]
+  },
+  "autoReply": {
+    "type": "buttons",
+    "text": "Hello! Thank you for contacting MatchDistrict. How can we assist you today?",
+    "imageUrl": "",
+    "caption": "",
+    "buttons": [
+      {
+        "id": "btn_info",
+        "title": "About Us",
+        "reply": "MatchDistrict is an all-in-one platform for sports tournaments, scheduling, and local matchmaking!"
+      },
+      {
+        "id": "btn_support",
+        "title": "Contact Support",
+        "reply": "An agent from our support team will reach out to you within the hour."
+      },
+      {
+        "id": "btn_pricing",
+        "title": "Pricing & Plans",
+        "reply": "Check our current offers and club pricing directly on our website or reply with your inquiry."
+      }
+    ],
+    "link": {
+      "title": "Visit Website",
+      "url": "https://matchdistrict.com"
+    }
+  }
+}
+

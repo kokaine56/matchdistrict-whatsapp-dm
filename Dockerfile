@@ -15,12 +15,16 @@ RUN npm ci --omit=dev
 
 # Copy application source code and configuration files
 COPY src/ ./src/
+COPY public/ ./public/
+COPY config.json ./
 COPY recipients.csv ./
 COPY sent-log.json ./
+
+# Create uploads directory for publicly served media
+RUN mkdir -p uploads
 
 # Expose default port (Render will override via PORT env var)
 EXPOSE 3000
 
 # Start server
 CMD ["node", "src/server.js"]
-

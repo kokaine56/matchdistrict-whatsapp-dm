@@ -1,15 +1,31 @@
-# WhatsApp Outreach Tool (Meta Business Cloud API)
+# WhatsApp Outreach & Admin Console (Meta Business Cloud API)
 
-A minimal Node.js & Express service for bulk outreach and 24-hour window auto-replies using the official Meta WhatsApp Cloud API.
+A production-ready WhatsApp outreach tool with an administrative web UI (plain HTML/CSS/JS, no frameworks), single password login, monthly cap enforcement, and auto-reply rules with interactive button handling.
 
 ---
 
 ## Features
 
-- **Bulk First Message (`POST /send-campaign`)**: Reads `recipients.csv`, checks `opted_in` status, and sends approved templates (`hello`, `hi`, `ek kam hai`).
-- **Hard Cap (800 unique users / month)**: Tracks sent phone numbers in `sent-log.json` keyed by calendar month (`YYYY-MM`). Stops sending immediately once cap is reached, skips remaining, and auto-resets when the month changes.
-- **Auto-Reply Webhook (`GET` & `POST /webhook`)**: Verifies with Meta and auto-replies to user responses using normal text messages inside the 24-hour service window. Auto-replies do not count against the 800 monthly cap.
-- **Fail-safe Error Handling**: Invalid numbers or send errors are logged and skipped without counting toward the monthly cap.
+- **Admin Web Dashboard**: Single-password login protected by HTTP-only session cookies and startup SHA-256 hash comparison.
+- **Campaign Dispatcher (`POST /api/send-campaign`)**:
+  - Supports templates: `hello`, `hi`, and `ek kam hai`.
+  - Image header (URL or file upload saved in `/uploads`).
+  - Dynamic body variables (`{{1}}`, `{{2}}`...).
+  - Dynamic URL button parameters and quick-reply button payloads.
+  - Live WhatsApp chat simulator preview.
+- **Auto-Reply Engine (`GET` & `POST /webhook`)**:
+  - Handles incoming user replies inside the 24-hour customer service window.
+  - Supported reply formats: Text, Image with caption, Interactive Reply Buttons (up to 3), or Call-To-Action Link Button.
+  - **Button Tap Routing**: Each reply button can have its own configured follow-up message sent when tapped!
+  - Validates Meta's `X-Hub-Signature-256` against the original request body, handles message status changes, and deduplicates webhook retries in memory.
+- **Monthly Cap Enforcement (800 Unique Users/Month)**:
+  - Local JSON storage in `sent-log.json` keyed by calendar month (`YYYY-MM`).
+  - Hard stop when limit is hit; skips remaining numbers and reports count.
+  - Automatically resets each calendar month.
+  - Failed sends and incoming user replies / auto-replies do not count toward the cap.
+- **Recipients Management**:
+  - Drag & drop or upload `recipients.csv` directly from the UI.
+  - Preview table with status badges and count indicators (Total, Opted In, Opted Out).
 
 ---
 
@@ -17,84 +33,47 @@ A minimal Node.js & Express service for bulk outreach and 24-hour window auto-re
 
 ```
 matchdistrict-whatsapp-dm/
-├── .env                  # Environment variables
-├── .env.example          # Environment template
-├── package.json          # Dependencies & scripts
-├── recipients.csv        # Recipient list with phone & opted_in columns
-├── sent-log.json         # Monthly tracking log (YYYY-MM keys)
-└── src/
-    ├── server.js         # Express server & webhook endpoints
-    ├── campaign.js       # Bulk campaign dispatcher & limit enforcement
-    ├── tracker.js        # File-based monthly tracking logic
-    └── whatsapp.js       # Meta Graph API template & text message client
+├── public/
+│   ├── css/style.css       # Clean, responsive WhatsApp-themed styling
+│   ├── js/app.js           # Client-side UI logic, live preview & API client
+│   ├── index.html          # Protected Admin Dashboard
+│   └── login.html          # Clean password authentication page
+├── uploads/                # Public media folder for Meta Cloud API
+├── src/
+│   ├── auth.js             # SHA-256 password hash & HMAC session token logic
+│   ├── config.js           # Settings persistence in config.json
+│   ├── tracker.js          # Monthly cap tracking & sent-log.json
+│   ├── whatsapp.js         # Meta Graph API template & interactive message dispatcher
+│   ├── campaign.js         # Bulk recipient loop & limit enforcement
+│   └── server.js           # Express server & webhooks
+├── config.json             # Persisted UI settings
+├── sent-log.json           # Sent history keyed by YYYY-MM
+├── recipients.csv          # Recipient phone numbers & opt-in status
+├── Dockerfile              # Container definition for Render deployment
+└── .env                    # Secrets & configuration
 ```
 
 ---
 
-## Quick Start
+## Configuration (`.env`)
 
-### 1. Install Dependencies
-```bash
-npm install
-```
-
-### 2. Configure Environment (`.env`)
-Fill in your credentials in `.env`:
 ```env
 ACCESS_TOKEN=your_meta_access_token_here
 PHONE_NUMBER_ID=your_phone_number_id_here
-WEBHOOK_VERIFY_TOKEN=your_custom_verify_token_here
+WEBHOOK_VERIFY_TOKEN=matchdistrict_verify_token_123
+META_APP_SECRET=your_meta_app_secret_here
 MONTHLY_LIMIT=800
+ADMIN_PASSWORD=565454
+SESSION_SECRET=matchdistrict_super_secret_session_2026
 PORT=3000
-AUTO_REPLY_TEXT="Hello! Thank you for reaching out. We have received your message and will get back to you shortly."
 ```
 
-### 3. Add Recipients (`recipients.csv`)
-Ensure numbers include country codes without spaces:
-```csv
-phone,opted_in
-+15551234567,true
-+15559876543,false
-+919876543210,true
-```
+## Render webhook deployment
 
-### 4. Start the Server
-```bash
-npm start
-```
+Set `WEBHOOK_VERIFY_TOKEN` and `META_APP_SECRET` in the Render service environment, alongside the existing WhatsApp credentials. Keep the existing Docker deployment; the server uses Render's `PORT` and binds to `0.0.0.0`.
 
----
+In the Meta app's WhatsApp webhook settings, use this public callback URL (replace the host with the service's assigned Render hostname):
 
-## API Endpoints
+`https://<your-render-service>.onrender.com/webhook`
 
-### 1. Trigger Campaign
-`POST /send-campaign`
-```bash
-curl -X POST http://localhost:3000/send-campaign \
-  -H "Content-Type: application/json" \
-  -d '{"template": "hello"}'
-```
-*Supported template values:* `"hello"`, `"hi"`, `"ek kam hai"`.
-
-### 2. Webhook
-- `GET /webhook`: Verification endpoint for Meta Cloud API.
-- `POST /webhook`: Ingests incoming user messages and sends the auto-reply.
-
----
-
-## Deploying on Render
-
-1. Push your repository to GitHub / GitLab.
-2. In [Render Dashboard](https://dashboard.render.com/), click **New +** $\rightarrow$ **Web Service**.
-3. Connect your repository (if in a subfolder, set **Root Directory** to `matchdistrict-whatsapp-dm`).
-4. Select **Docker** as the Runtime.
-5. In **Environment Variables**, add:
-   - `ACCESS_TOKEN`
-   - `PHONE_NUMBER_ID`
-   - `WEBHOOK_VERIFY_TOKEN`
-   - `MONTHLY_LIMIT` (e.g. `800`)
-   - `AUTO_REPLY_TEXT`
-6. Click **Deploy Web Service**.
-7. Once deployed, set your Meta WhatsApp Webhook URL to:
-   `https://<your-render-app-name>.onrender.com/webhook`
-
+Set the verify token to the exact value of `WEBHOOK_VERIFY_TOKEN`, then subscribe to the `messages` field. Meta sends sent, delivered, read, and failed message updates on this field as well as incoming messages. Status event details are logged with message IDs and state/error codes only. Retry deduplication is in memory and lasts until eviction or process restart.

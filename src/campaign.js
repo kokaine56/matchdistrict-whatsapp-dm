@@ -10,17 +10,18 @@ import {
   normalizePhone,
   recordSuccessfulSend
 } from './tracker.js';
+import { loadConfig } from './config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const CSV_FILE = path.resolve(__dirname, '../recipients.csv');
+export const CSV_FILE = path.resolve(__dirname, '../recipients.csv');
 
 /**
  * Parse recipients.csv into an array of { phone, optedIn }
  */
 export async function readRecipientsFromCsv(filePath = CSV_FILE) {
   if (!fs.existsSync(filePath)) {
-    throw new Error(`Recipients file not found at: ${filePath}`);
+    return [];
   }
 
   return new Promise((resolve, reject) => {
@@ -28,17 +29,15 @@ export async function readRecipientsFromCsv(filePath = CSV_FILE) {
     fs.createReadStream(filePath)
       .pipe(csvParser())
       .on('data', (row) => {
-        // Find phone from possible header names
-        const phoneKey = Object.keys(row).find(k => /phone|number/i.test(k)) || Object.keys(row)[0];
+        const phoneKey = Object.keys(row).find(k => /phone|number|mobile/i.test(k)) || Object.keys(row)[0];
         const rawPhone = row[phoneKey];
 
-        // Find opted_in flag
         const optKey = Object.keys(row).find(k => /opt/i.test(k));
         const rawOpt = optKey ? row[optKey] : 'false';
         const isOptedIn = String(rawOpt).trim().toLowerCase() === 'true';
 
         recipients.push({
-          phone: rawPhone,
+          phone: rawPhone ? String(rawPhone).trim() : '',
           optedIn: isOptedIn
         });
       })
@@ -48,17 +47,40 @@ export async function readRecipientsFromCsv(filePath = CSV_FILE) {
 }
 
 /**
- * Execute the campaign send logic.
+ * Return summary of recipients for the UI.
  */
-export async function runCampaign(templateKey) {
-  const template = resolveTemplate(templateKey);
-  if (!template) {
-    throw new Error(`Invalid template "${templateKey}". Supported templates: "hello", "hi", "ek kam hai"`);
-  }
+export async function getRecipientsSummary() {
+  const recipients = await readRecipientsFromCsv();
+  const total = recipients.length;
+  const optedIn = recipients.filter(r => r.optedIn).length;
+  const optedOut = total - optedIn;
+  return {
+    total,
+    optedIn,
+    optedOut,
+    preview: recipients.slice(0, 50)
+  };
+}
+
+/**
+ * Run bulk campaign send logic.
+ */
+export async function runCampaign(overrideCampaignConfig = null) {
+  const config = await loadConfig();
+  const campaignSettings = overrideCampaignConfig || config.campaign || {};
+
+  const templateResolved = resolveTemplate(
+    campaignSettings.template || 'hello',
+    campaignSettings.languageCode || 'en_US'
+  );
 
   const monthlyLimit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
   const monthKey = getCurrentMonthKey();
   const recipients = await readRecipientsFromCsv();
+
+  if (recipients.length === 0) {
+    throw new Error('recipients.csv is empty or missing. Please upload a valid CSV file.');
+  }
 
   let sentCount = 0;
   let alreadySentCount = 0;
@@ -80,27 +102,25 @@ export async function runCampaign(templateKey) {
       continue;
     }
 
-    // Validate phone digits
+    // 2. Validate phone number format
     if (!normalized || normalized.length < 7) {
       console.warn(`[Campaign] Skipping invalid phone number: "${recipient.phone}"`);
       failedCount++;
-      failedDetails.push({ phone: recipient.phone, error: 'Invalid phone format' });
+      failedDetails.push({ phone: recipient.phone, error: 'Invalid phone number format' });
       continue;
     }
 
-    // 2. Check if already messaged this calendar month
+    // 3. Check if already messaged this calendar month
     const alreadySent = await isAlreadySentThisMonth(normalized, monthKey);
     if (alreadySent) {
       alreadySentCount++;
       continue;
     }
 
-    // 3. Hard Cap check
+    // 4. Hard Cap check
     if (currentMonthTotal >= monthlyLimit) {
       limitReached = true;
-      // All remaining unprocessed recipients in CSV are skipped
       const remainingRecipients = recipients.slice(i);
-      // Count how many of the remaining ones would have qualified
       skippedDueToLimit = remainingRecipients.filter(r => r.optedIn).length;
       console.warn(
         `[Campaign] Monthly limit reached (${currentMonthTotal}/${monthlyLimit}). Stopped immediately. Skipped ${skippedDueToLimit} remaining recipients.`
@@ -108,31 +128,35 @@ export async function runCampaign(templateKey) {
       break;
     }
 
-    // 4. Send approved template message
+    // 5. Send approved template message
     try {
       await sendTemplateMessage({
         to: normalized,
-        templateName: template.name,
-        languageCode: template.languageCode
+        templateName: templateResolved.name,
+        languageCode: templateResolved.languageCode,
+        headerImageUrl: campaignSettings.headerImageUrl,
+        bodyVariables: campaignSettings.bodyVariables,
+        urlButtonValue: campaignSettings.urlButtonValue,
+        quickReplyPayloads: campaignSettings.quickReplyPayloads
       });
 
-      // Record successful send to log
+      // Successful send - record in month tracking
       currentMonthTotal = await recordSuccessfulSend(normalized, monthKey);
       sentCount++;
       console.log(`[Campaign] Sent successfully to ${normalized} (${currentMonthTotal}/${monthlyLimit})`);
     } catch (err) {
-      // 5. Log error and continue with next recipient (failed sends do NOT count toward 800)
+      // 6. On failure: log error, do NOT count toward 800 limit, continue to next
       failedCount++;
       failedDetails.push({ phone: normalized, error: err.message });
       console.error(`[Campaign Error] Failed to send to ${normalized}:`, err.message);
     }
   }
 
-  const response = {
+  return {
     status: limitReached ? 'limit_reached' : 'completed',
     month: monthKey,
     monthlyLimit,
-    templateUsed: template.name,
+    templateUsed: templateResolved.name,
     totalInCsv: recipients.length,
     sent: sentCount,
     alreadySentThisMonth: alreadySentCount,
@@ -141,11 +165,8 @@ export async function runCampaign(templateKey) {
     skippedDueToLimit,
     currentMonthTotalSent: currentMonthTotal,
     ...(limitReached && {
-      message: `Monthly limit of ${monthlyLimit} unique users messaged for ${monthKey} was reached. Outreach stopped immediately; ${skippedDueToLimit} opted-in recipients were skipped.`
+      message: `Monthly limit of ${monthlyLimit} unique users messaged for ${monthKey} was reached. Stopped immediately; ${skippedDueToLimit} opted-in recipients were skipped.`
     }),
     ...(failedDetails.length > 0 && { failedDetails })
   };
-
-  return response;
 }
-
