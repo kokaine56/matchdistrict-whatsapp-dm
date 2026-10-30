@@ -22,6 +22,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', true);
 const port = process.env.PORT || 3000;
 
 // Directories
@@ -103,6 +104,29 @@ app.post('/logout', (req, res) => {
 // Dashboard Home (Protected)
 app.get('/', requireAuth, (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+// Webhook setup values are only available to an authenticated dashboard session.
+app.get('/api/webhook-setup', requireAuth, (req, res) => {
+  let baseUrl = process.env.PUBLIC_BASE_URL;
+  if (baseUrl) {
+    try { baseUrl = new URL(baseUrl).origin; }
+    catch { return res.status(500).json({ error: 'PUBLIC_BASE_URL must be a valid public URL' }); }
+  } else {
+    const forwardedHost = req.get('x-forwarded-host')?.split(',')[0]?.trim();
+    const host = forwardedHost || req.get('host');
+    const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim();
+    const protocol = forwardedProto || req.protocol;
+    if (!host) return res.status(400).json({ error: 'Could not detect the public host' });
+    baseUrl = `${protocol}://${host}`;
+  }
+  let hostname = '';
+  try { hostname = new URL(baseUrl).hostname.toLowerCase(); } catch { /* URL validated above */ }
+  res.json({
+    callbackUrl: `${baseUrl.replace(/\/$/, '')}/webhook`,
+    verifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
+    isLocalhost: hostname === 'localhost' || hostname === '127.0.0.1'
+  });
 });
 
 // Get Config

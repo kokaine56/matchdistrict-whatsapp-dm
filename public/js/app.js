@@ -92,12 +92,45 @@ function showAlert(message, type = 'success') {
 // --- FETCH INITIAL DATA ---
 async function initialize() {
   try {
-    await Promise.all([loadStats(), loadConfig(), loadRecipients()]);
+    await Promise.all([loadStats(), loadConfig(), loadRecipients(), loadWebhookSetup()]);
     updateLivePreview();
   } catch (err) {
     showAlert('Error loading dashboard data: ' + err.message, 'danger');
   }
 }
+
+async function loadWebhookSetup() {
+  const error = document.getElementById('webhookSetupError');
+  try {
+    const response = await fetch('/api/webhook-setup');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not load webhook setup');
+    document.getElementById('webhookCallbackUrl').value = data.callbackUrl;
+    document.getElementById('webhookVerifyToken').value = data.verifyToken;
+    document.getElementById('webhookLocalWarning').style.display = data.isLocalhost ? 'block' : 'none';
+    if (!data.verifyToken) throw new Error('Set WEBHOOK_VERIFY_TOKEN in the server environment.');
+  } catch (err) {
+    error.textContent = err.message;
+    error.style.display = 'block';
+  }
+}
+
+document.querySelectorAll('.webhook-copy').forEach(button => {
+  button.addEventListener('click', async () => {
+    const input = document.getElementById(button.dataset.copyTarget);
+    if (!input?.value) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      button.textContent = 'Copied';
+      setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+    } catch {
+      input.select();
+      document.execCommand('copy');
+      button.textContent = 'Copied';
+      setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+    }
+  });
+});
 
 async function loadStats() {
   const res = await fetch('/api/stats');

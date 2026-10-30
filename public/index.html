@@ -34,6 +34,33 @@
       <button class="tab-btn active" data-tab="campaign-tab">1. Campaign Message</button>
       <button class="tab-btn" data-tab="autoreply-tab">2. Auto-Reply Rules</button>
       <button class="tab-btn" data-tab="recipients-tab">3. Recipients & Send</button>
+      <button class="tab-btn" data-tab="webhook-tab">4. Webhook Setup</button>
+    </div>
+
+    <!-- TAB 4: WEBHOOK SETUP -->
+    <div id="webhook-tab" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">Webhook Setup</h2>
+        <div id="webhookLocalWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem;">
+          Meta can't reach localhost. Use ngrok or a hosted URL.
+        </div>
+        <div class="webhook-value">
+          <div class="form-group">
+            <label for="webhookCallbackUrl">Callback URL</label>
+            <input id="webhookCallbackUrl" type="text" readonly>
+          </div>
+          <button type="button" class="btn btn-secondary webhook-copy" data-copy-target="webhookCallbackUrl">Copy</button>
+        </div>
+        <div class="webhook-value">
+          <div class="form-group">
+            <label for="webhookVerifyToken">Verify token</label>
+            <input id="webhookVerifyToken" type="text" readonly>
+          </div>
+          <button type="button" class="btn btn-secondary webhook-copy" data-copy-target="webhookVerifyToken">Copy</button>
+        </div>
+        <p class="help-text">Meta Developer Dashboard &gt; WhatsApp &gt; Configuration &gt; Webhook &gt; Edit. Paste the Callback URL and Verify token, click Verify and save, then subscribe to the 'messages' field.</p>
+        <p id="webhookSetupError" class="help-text" style="display: none; color: var(--danger);"></p>
+      </div>
     </div>
 
     <!-- TAB 1: CAMPAIGN MESSAGE -->

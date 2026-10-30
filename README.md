@@ -66,7 +66,10 @@ MONTHLY_LIMIT=800
 ADMIN_PASSWORD=565454
 SESSION_SECRET=matchdistrict_super_secret_session_2026
 PORT=3000
+PUBLIC_BASE_URL=
 ```
+
+`PUBLIC_BASE_URL` is optional. When set, it overrides the dashboard request host when building the webhook callback URL. Otherwise the dashboard derives it from forwarded proxy headers or the request host.
 
 ## Render webhook deployment
 
