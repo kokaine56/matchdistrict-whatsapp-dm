@@ -51,6 +51,26 @@ const csvStorage = multer.diskStorage({
 });
 const uploadCsv = multer({ storage: csvStorage });
 
+// Meta verification is intentionally handled before any middleware.
+app.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
+
+  if (
+    verifyToken &&
+    mode === 'subscribe' &&
+    typeof token === 'string' &&
+    token.trim() === verifyToken.trim() &&
+    challenge !== undefined
+  ) {
+    return res.status(200).type('text/plain').send(String(challenge));
+  }
+
+  return res.sendStatus(403);
+});
+
 // Middleware
 app.use(express.json({
   limit: '3mb',
@@ -68,20 +88,6 @@ app.use('/js', express.static(path.join(PUBLIC_DIR, 'js')));
 // ==========================================
 // 3. PUBLIC META WEBHOOK ROUTES (NO AUTH)
 // ==========================================
-
-// Webhook Verification (GET /webhook)
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
-
-  if (verifyToken && mode === 'subscribe' && typeof token === 'string' && token.trim() === verifyToken.trim() && challenge !== undefined) {
-    return res.status(200).type('text/plain').send(String(challenge));
-  }
-
-  return res.sendStatus(403);
-});
 
 // In-memory bounded deduplication for Meta retries. Status transitions are distinct events.
 const processedEventIds = new Set();
