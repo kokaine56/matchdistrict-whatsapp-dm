@@ -14,6 +14,7 @@ let availableTemplates = [];
 const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 const globalAlert = document.getElementById('globalAlert');
+const autoReplyToggle = document.getElementById('autoReplyToggle');
 
 // Usage Counters
 const sentCountDisplay = document.getElementById('sentCountDisplay');
@@ -81,6 +82,9 @@ tabBtns.forEach(btn => {
     btn.classList.add('active');
     const target = document.getElementById(btn.dataset.tab);
     if (target) target.classList.add('active');
+    if (target?.id === 'campaign-tab' && window.matchMedia('(max-width: 700px)').matches) {
+      document.querySelector('.preview-panel')?.removeAttribute('open');
+    }
   });
 });
 
@@ -180,12 +184,17 @@ async function loadStats() {
   currentStats = await res.json();
   sentCountDisplay.textContent = currentStats.monthSentCount;
   limitDisplay.textContent = currentStats.monthlyLimit;
+  const percent = currentStats.monthlyLimit ? Math.min(100, currentStats.monthSentCount / currentStats.monthlyLimit * 100) : 0;
+  document.getElementById('usageProgressFill').style.width = `${percent}%`;
+  document.querySelector('.usage-progress').setAttribute('aria-valuemax', currentStats.monthlyLimit);
+  document.querySelector('.usage-progress').setAttribute('aria-valuenow', currentStats.monthSentCount);
 }
 
 async function loadConfig() {
   const res = await fetch('/api/config');
   if (res.status === 401) return (window.location.href = '/login');
   currentConfig = await res.json();
+  renderAutoReplyState(currentConfig.autoReplyEnabled !== false);
 
   // Populate Campaign
   const c = currentConfig.campaign || {};
@@ -229,6 +238,38 @@ async function loadConfig() {
   }
 }
 
+function renderAutoReplyState(enabled) {
+  const state = Boolean(enabled);
+  autoReplyToggle.setAttribute('aria-checked', String(state));
+  autoReplyToggle.setAttribute('aria-label', `Auto-reply: ${state ? 'ON' : 'OFF'}`);
+  autoReplyToggle.classList.toggle('is-on', state);
+  document.getElementById('autoReplyToggleLabel').textContent = state ? 'ON' : 'OFF';
+  const badge = document.getElementById('autoReplyStatus');
+  badge.textContent = `Auto-reply: ${state ? 'ON' : 'OFF'}`;
+  badge.classList.toggle('is-off', !state);
+}
+
+autoReplyToggle.addEventListener('click', async () => {
+  const nextState = autoReplyToggle.getAttribute('aria-checked') !== 'true';
+  autoReplyToggle.disabled = true;
+  try {
+    const response = await fetch('/api/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoReplyEnabled: nextState })
+    });
+    const data = await response.json();
+    if (response.status === 401) return (window.location.href = '/login');
+    if (!response.ok) throw new Error(data.error || 'Could not update auto-reply state');
+    currentConfig = data.config;
+    renderAutoReplyState(nextState);
+    showAlert(`Auto-reply is now ${nextState ? 'ON' : 'OFF'}.`);
+  } catch (err) {
+    showAlert('Could not update auto-reply: ' + err.message, 'danger');
+  } finally {
+    autoReplyToggle.disabled = false;
+  }
+});
+
 async function loadRecipients() {
   const res = await fetch('/api/recipients');
   if (res.status === 401) return (window.location.href = '/login');
@@ -269,6 +310,10 @@ async function loadRecipients() {
 
     const indexCell = document.createElement('td');
     indexCell.textContent = String(idx + 1);
+    indexCell.dataset.label = '#';
+    numberCell.dataset.label = 'Phone Number';
+    statusCell.dataset.label = 'Status';
+    toggleCell.dataset.label = 'Opted in';
     tr.append(indexCell, numberCell, statusCell, toggleCell);
     recipientsTableBody.appendChild(tr);
   });

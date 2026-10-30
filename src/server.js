@@ -146,6 +146,8 @@ app.post('/webhook', (req, res) => {
           for (const msg of messages) {
             if (msg.id && !markEventProcessed(`message:${msg.id}`)) continue;
 
+            if (config.autoReplyEnabled === false) continue;
+
             const senderPhone = msg.from;
             console.log(`[Webhook Message] Received type=${String(msg.type || 'unknown').slice(0, 20)}`);
 
@@ -298,6 +300,7 @@ app.post('/api/config', requireAuth, async (req, res) => {
   try {
     const current = await loadConfig();
     const updated = {
+      autoReplyEnabled: typeof req.body.autoReplyEnabled === 'boolean' ? req.body.autoReplyEnabled : current.autoReplyEnabled,
       campaign: { ...current.campaign, ...(req.body.campaign || {}) },
       autoReply: { ...current.autoReply, ...(req.body.autoReply || {}) }
     };

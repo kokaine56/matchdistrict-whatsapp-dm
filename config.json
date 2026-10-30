@@ -1,4 +1,5 @@
 {
+  "autoReplyEnabled": true,
   "campaign": {
     "template": "hello",
     "languageCode": "en_US",

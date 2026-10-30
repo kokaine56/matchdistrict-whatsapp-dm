@@ -7,6 +7,7 @@ const __dirname = path.dirname(__filename);
 const CONFIG_FILE = path.resolve(__dirname, '../config.json');
 
 const DEFAULT_CONFIG = {
+  autoReplyEnabled: true,
   campaign: {
     template: '',
     languageCode: '',
@@ -36,6 +37,7 @@ export async function loadConfig() {
     const raw = await fs.readFile(CONFIG_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     return {
+      autoReplyEnabled: parsed.autoReplyEnabled !== false,
       campaign: { ...DEFAULT_CONFIG.campaign, ...(parsed.campaign || {}) },
       autoReply: { ...DEFAULT_CONFIG.autoReply, ...(parsed.autoReply || {}) }
     };

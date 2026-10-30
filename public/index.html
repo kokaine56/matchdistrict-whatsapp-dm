@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>WhatsApp Outreach & Auto-Reply Console</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -18,8 +18,10 @@
     </div>
     <div class="header-actions">
       <div class="usage-counter" id="usageCounter">
-        Monthly Cap: <strong id="sentCountDisplay">0</strong> / <span id="limitDisplay">800</span> used this month
+        <span>Monthly Cap: <strong id="sentCountDisplay">0</strong> / <span id="limitDisplay">800</span> used this month</span>
+        <span class="usage-progress" role="progressbar" aria-label="Monthly campaign usage" aria-valuemin="0" aria-valuemax="800" aria-valuenow="0"><span id="usageProgressFill"></span></span>
       </div>
+      <span id="autoReplyStatus" class="auto-reply-status" aria-live="polite">Auto-reply: ON</span>
       <form action="/logout" method="POST" style="margin: 0;">
         <button type="submit" class="btn-logout">Logout</button>
       </form>
@@ -31,10 +33,11 @@
 
     <!-- Navigation Tabs -->
     <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="campaign-tab">1. Campaign Message</button>
-      <button class="tab-btn" data-tab="autoreply-tab">2. Auto-Reply Rules</button>
-      <button class="tab-btn" data-tab="recipients-tab">3. Recipients & Send</button>
-      <button class="tab-btn" data-tab="webhook-tab">4. Webhook Setup</button>
+      <button class="tab-btn active" data-tab="campaign-tab"><span>✉</span><span>Campaign</span></button>
+      <button class="tab-btn" data-tab="autoreply-tab"><span>↩</span><span>Auto-reply</span></button>
+      <button class="tab-btn" data-tab="recipients-tab"><span>♙</span><span>Recipients</span></button>
+      <button class="tab-btn" data-tab="send-tab"><span>➤</span><span>Send</span></button>
+      <button class="tab-btn" data-tab="webhook-tab"><span>⌁</span><span>Webhook</span></button>
     </div>
 
     <!-- TAB 4: WEBHOOK SETUP -->
@@ -126,8 +129,8 @@
         </div>
 
         <!-- Live WhatsApp Simulator Preview -->
-        <div class="card">
-          <h2 class="card-title">Live Message Preview</h2>
+        <details class="card preview-panel">
+          <summary class="card-title">Live Message Preview</summary>
           <div class="preview-container">
             <div class="preview-bubble">
               <img id="previewImg" class="preview-header-img" style="display: none;" src="" alt="Header">
@@ -138,7 +141,7 @@
               <div class="preview-meta">12:00 PM ✓✓</div>
             </div>
           </div>
-        </div>
+        </details>
       </div>
     </div>
 
@@ -146,6 +149,10 @@
     <div id="autoreply-tab" class="tab-content">
       <div class="card">
         <h2 class="card-title">Auto-Reply Configuration (24h Window)</h2>
+        <div class="auto-reply-control">
+          <span>Auto-reply: <strong id="autoReplyToggleLabel">ON</strong></span>
+          <button type="button" id="autoReplyToggle" class="switch-control is-on" role="switch" aria-checked="true" aria-label="Auto-reply: ON / OFF"><span></span></button>
+        </div>
         <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">
           Sent automatically when a recipient replies. User replies and auto-replies do not count toward the monthly limit.
         </p>
@@ -295,13 +302,16 @@
               </tr>
             </thead>
             <tbody id="recipientsTableBody">
-              <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Loading recipients...</td></tr>
+              <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Loading recipients...</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- Send Campaign Action Card -->
+    </div>
+
+    <!-- TAB: SEND -->
+    <div id="send-tab" class="tab-content">
       <div class="card" style="border-color: var(--wa-teal);">
         <h2 class="card-title" style="color: var(--wa-green);">Dispatch Campaign</h2>
         <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
