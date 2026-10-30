@@ -8,6 +8,21 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
+/**
+ * Health check & status endpoint (GET /)
+ */
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'matchdistrict-whatsapp-dm',
+    message: 'WhatsApp Outreach & Auto-Reply service is running.',
+    endpoints: {
+      sendCampaign: 'POST /send-campaign',
+      webhook: '/webhook'
+    }
+  });
+});
+
 // Set to avoid duplicate processing of incoming webhook retries
 const processedMessageIds = new Set();
 function trackProcessedMessage(messageId) {
