@@ -1,0 +1,25 @@
+{
+  "name": "matchdistrict-whatsapp-dm",
+  "version": "1.0.0",
+  "description": "WhatsApp outreach tool using Meta WhatsApp Business Cloud API",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "meta-cloud-api",
+    "outreach",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
+
