@@ -14,9 +14,9 @@ import {
   COOKIE_NAME
 } from './auth.js';
 import { loadConfig, saveConfig } from './config.js';
-import { runCampaign, getRecipientsSummary, addRecipientsToCsv, CSV_FILE } from './campaign.js';
+import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, CSV_FILE } from './campaign.js';
 import { getCurrentMonthKey, getMonthSentCount } from './tracker.js';
-import { sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
+import { getApprovedMessageTemplates, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -276,6 +276,14 @@ app.get('/api/webhook-setup', requireAuth, (req, res) => {
 });
 
 // Get Config
+app.get('/api/message-templates', requireAuth, async (req, res) => {
+  try {
+    res.json({ templates: await getApprovedMessageTemplates() });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get('/api/config', requireAuth, async (req, res) => {
   try {
     const config = await loadConfig();
@@ -330,11 +338,17 @@ app.get('/api/recipients', requireAuth, async (req, res) => {
 // Add recipients manually while preserving the existing CSV list.
 app.post('/api/recipients', requireAuth, async (req, res) => {
   try {
-    const numbers = String(req.body?.numbers || '')
-      .split(/[\n,;]+/)
-      .map(number => number.trim())
-      .filter(Boolean);
-    const result = await addRecipientsToCsv(numbers, req.body?.optedIn === true);
+    const result = await addRecipientsToCsv(req.body?.numbers || '', req.body?.optedIn === true);
+    const summary = await getRecipientsSummary();
+    res.json({ status: 'ok', ...result, summary });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/recipients/opt-in', requireAuth, async (req, res) => {
+  try {
+    const result = await updateRecipientOptIn(req.body?.phone, req.body?.optedIn);
     const summary = await getRecipientsSummary();
     res.json({ status: 'ok', ...result, summary });
   } catch (err) {
@@ -385,7 +399,13 @@ app.post('/api/send-campaign', requireAuth, async (req, res) => {
 app.post('/send-campaign', requireAuth, async (req, res) => {
   try {
     const templateName = req.body?.template;
-    const override = templateName ? { template: templateName } : null;
+    if (templateName && !req.body?.languageCode) {
+      return res.status(400).json({ error: 'languageCode from an approved Meta template is required.' });
+    }
+    const override = templateName ? {
+      template: templateName,
+      languageCode: req.body?.languageCode
+    } : null;
     const result = await runCampaign(override);
     res.json(result);
   } catch (err) {

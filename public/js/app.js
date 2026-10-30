@@ -2,12 +2,13 @@
 const TEMPLATE_PREVIEWS = {
   'hello': 'Hello {{1}}! Welcome to {{2}}. We are thrilled to connect with you.',
   'hi': 'Hi {{1}}! Quick check-in from {{2}}. How can we help you today?',
-  'ek kam hai': 'Ek kaam hai aapse regarding {{1}}. Please reply whenever you are free!'
+  'ek_kam_hai': 'Ek kaam hai aapse regarding {{1}}. Please reply whenever you are free!'
 };
 
 let currentConfig = null;
 let currentStats = null;
 let currentRecipients = null;
+let availableTemplates = [];
 
 // DOM Elements
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -95,11 +96,49 @@ function showAlert(message, type = 'success') {
 // --- FETCH INITIAL DATA ---
 async function initialize() {
   try {
-    await Promise.all([loadStats(), loadConfig(), loadRecipients(), loadWebhookSetup()]);
+    await Promise.all([loadStats(), loadRecipients(), loadWebhookSetup(), loadMessageTemplates()]);
+    await loadConfig();
     updateLivePreview();
   } catch (err) {
     showAlert('Error loading dashboard data: ' + err.message, 'danger');
   }
+}
+
+async function loadMessageTemplates() {
+  try {
+    const response = await fetch('/api/message-templates');
+    if (response.status === 401) return (window.location.href = '/login');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not load templates from Meta');
+    availableTemplates = Array.isArray(data.templates) ? data.templates : [];
+    templateSelect.replaceChildren();
+
+    const prompt = document.createElement('option');
+    prompt.value = '';
+    prompt.textContent = availableTemplates.length ? 'Select an approved template' : 'No approved templates found';
+    templateSelect.append(prompt);
+
+    availableTemplates.forEach((template, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = `${template.name} — ${template.language}`;
+      templateSelect.append(option);
+    });
+  } catch (err) {
+    templateSelect.replaceChildren(new Option('Could not load templates from Meta', ''));
+    showAlert('Template list could not be loaded: ' + err.message, 'danger');
+  }
+}
+
+function selectedTemplate() {
+  const index = Number(templateSelect.value);
+  return templateSelect.value !== '' && Number.isInteger(index) ? availableTemplates[index] : null;
+}
+
+function selectTemplate(name, language) {
+  const index = availableTemplates.findIndex(template => template.name === name && template.language === language);
+  templateSelect.value = index < 0 ? '' : String(index);
+  languageCodeInput.value = index < 0 ? '' : availableTemplates[index].language;
 }
 
 async function loadWebhookSetup() {
@@ -150,8 +189,7 @@ async function loadConfig() {
 
   // Populate Campaign
   const c = currentConfig.campaign || {};
-  templateSelect.value = c.template || 'hello';
-  languageCodeInput.value = c.languageCode || 'en_US';
+  selectTemplate(c.template, c.languageCode);
   headerImageUrlInput.value = c.headerImageUrl || '';
   urlButtonValueInput.value = c.urlButtonValue || '';
   if (c.quickReplyPayloads?.[0]) qrPayload0Input.value = c.quickReplyPayloads[0];
@@ -202,7 +240,7 @@ async function loadRecipients() {
 
   recipientsTableBody.innerHTML = '';
   if (!currentRecipients.preview || currentRecipients.preview.length === 0) {
-    recipientsTableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No recipients found in recipients.csv</td></tr>';
+    recipientsTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No recipients found in recipients.csv</td></tr>';
     return;
   }
 
@@ -219,11 +257,40 @@ async function loadRecipients() {
     status.textContent = r.optedIn ? 'Opted In ✓' : 'Opted Out ✗';
     statusCell.append(status);
 
+    const toggleCell = document.createElement('td');
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = `recipient-toggle${r.optedIn ? ' is-on' : ''}`;
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-checked', String(Boolean(r.optedIn)));
+    toggle.setAttribute('aria-label', `Switch ${r.phone} ${r.optedIn ? 'off' : 'on'}`);
+    toggle.addEventListener('click', () => setRecipientOptIn(r.phone, !r.optedIn, toggle));
+    toggleCell.append(toggle);
+
     const indexCell = document.createElement('td');
     indexCell.textContent = String(idx + 1);
-    tr.append(indexCell, numberCell, statusCell);
+    tr.append(indexCell, numberCell, statusCell, toggleCell);
     recipientsTableBody.appendChild(tr);
   });
+}
+
+async function setRecipientOptIn(phone, optedIn, toggle) {
+  toggle.disabled = true;
+  try {
+    const response = await fetch('/api/recipients/opt-in', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, optedIn })
+    });
+    const data = await response.json();
+    if (response.status === 401) return (window.location.href = '/login');
+    if (!response.ok) throw new Error(data.error || 'Could not update recipient status');
+    await loadRecipients();
+    showAlert(`Recipient marked ${optedIn ? 'Opted In' : 'Opted Out'}.`);
+  } catch (err) {
+    showAlert('Could not update recipient: ' + err.message, 'danger');
+    toggle.disabled = false;
+  }
 }
 
 // --- DYNAMIC VARIABLES LOGIC ---
@@ -257,8 +324,8 @@ btnAddVariable.addEventListener('click', () => addVariableRow());
 
 // --- LIVE PREVIEW ---
 function updateLivePreview() {
-  const selectedTpl = templateSelect.value;
-  let rawBody = TEMPLATE_PREVIEWS[selectedTpl] || 'Hello! Thank you for contacting us.';
+  const selectedTpl = selectedTemplate();
+  let rawBody = TEMPLATE_PREVIEWS[selectedTpl?.name] || 'Hello! Thank you for contacting us.';
 
   // Substitute variables
   const varInputs = Array.from(variablesContainer.querySelectorAll('.var-input'));
@@ -304,7 +371,11 @@ function updateLivePreview() {
   }
 }
 
-templateSelect.addEventListener('change', updateLivePreview);
+templateSelect.addEventListener('change', () => {
+  const template = selectedTemplate();
+  languageCodeInput.value = template?.language || '';
+  updateLivePreview();
+});
 headerImageUrlInput.addEventListener('input', updateLivePreview);
 urlButtonValueInput.addEventListener('input', updateLivePreview);
 qrPayload0Input.addEventListener('input', updateLivePreview);
@@ -386,6 +457,9 @@ btnAddRecipients.addEventListener('click', async () => {
     return;
   }
 
+  const feedback = document.getElementById('recipientInputFeedback');
+  feedback.replaceChildren();
+  feedback.style.display = 'none';
   btnAddRecipients.disabled = true;
   btnAddRecipients.textContent = 'Adding...';
   try {
@@ -397,9 +471,22 @@ btnAddRecipients.addEventListener('click', async () => {
     const data = await res.json();
     if (res.status === 401) return (window.location.href = '/login');
     if (!res.ok) throw new Error(data.error || 'Could not add recipients');
-    manualRecipientNumbers.value = '';
+    if (data.invalid?.length) {
+      feedback.style.display = 'block';
+      const heading = document.createElement('strong');
+      heading.textContent = 'Rejected numbers';
+      const list = document.createElement('ul');
+      data.invalid.forEach(item => {
+        const row = document.createElement('li');
+        row.textContent = `${item.number}: ${item.reason}`;
+        list.append(row);
+      });
+      feedback.append(heading, list);
+    }
+    if (!data.invalid?.length) manualRecipientNumbers.value = '';
     await loadRecipients();
-    showAlert(`Added ${data.added} number(s); skipped ${data.skipped} duplicate(s).`);
+    showAlert(`Added ${data.added} number(s); skipped ${data.skipped} duplicate(s).${data.invalid?.length ? ` Rejected ${data.invalid.length} invalid number(s); see details below.` : ''}`,
+      data.invalid?.length ? 'warning' : 'success');
   } catch (err) {
     showAlert('Could not add numbers: ' + err.message, 'danger');
   } finally {
@@ -428,22 +515,26 @@ radioCards.forEach(card => {
 });
 
 // --- SAVE CAMPAIGN FORM ---
-campaignForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
+function getCampaignFormSettings() {
+  const template = selectedTemplate();
+  if (!template) return null;
   const varInputs = Array.from(variablesContainer.querySelectorAll('.var-input'));
-  const bodyVariables = varInputs.map(i => i.value.trim()).filter(Boolean);
-
+  const bodyVariables = varInputs.map(input => input.value.trim()).filter(Boolean);
   const quickReplyPayloads = [qrPayload0Input.value.trim(), qrPayload1Input.value.trim()].filter(Boolean);
-
-  const updatedCampaign = {
-    template: templateSelect.value,
-    languageCode: languageCodeInput.value.trim() || 'en_US',
+  return {
+    template: template.name,
+    languageCode: template.language,
     headerImageUrl: headerImageUrlInput.value.trim(),
     bodyVariables,
     urlButtonValue: urlButtonValueInput.value.trim(),
     quickReplyPayloads
   };
+}
+
+campaignForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const updatedCampaign = getCampaignFormSettings();
+  if (!updatedCampaign) return showAlert('Select an approved Meta template and language first.', 'danger');
 
   try {
     const res = await fetch('/api/config', {
@@ -518,13 +609,15 @@ autoReplyForm.addEventListener('submit', async (e) => {
 
 // --- DISPATCH CAMPAIGN MODAL & EXECUTION ---
 btnSendCampaign.addEventListener('click', () => {
+  const template = selectedTemplate();
+  if (!template) return showAlert('Select an approved Meta template before sending.', 'danger');
   const eligible = currentRecipients?.optedIn || 0;
   const used = currentStats?.monthSentCount || 0;
   const limit = currentStats?.monthlyLimit || 800;
   const remaining = Math.max(0, limit - used);
 
   modalPromptText.innerHTML = `
-    You are about to send <strong>${templateSelect.value}</strong> to <strong>${eligible}</strong> opted-in recipients.<br><br>
+    You are about to send <strong>${template.name}</strong> (${template.language}) to <strong>${eligible}</strong> opted-in recipients.<br><br>
     Monthly status: <strong>${used} / ${limit}</strong> used (${remaining} remaining slots).
   `;
   confirmModal.classList.add('active');
@@ -533,6 +626,8 @@ btnSendCampaign.addEventListener('click', () => {
 btnModalCancel.addEventListener('click', () => confirmModal.classList.remove('active'));
 
 btnModalConfirm.addEventListener('click', async () => {
+  const campaign = getCampaignFormSettings();
+  if (!campaign) return showAlert('Select an approved Meta template and language first.', 'danger');
   confirmModal.classList.remove('active');
   btnSendCampaign.disabled = true;
   btnSendCampaign.textContent = '⏳ Dispatching campaign... please wait';
@@ -541,7 +636,7 @@ btnModalConfirm.addEventListener('click', async () => {
     const res = await fetch('/api/send-campaign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+      body: JSON.stringify({ campaign })
     });
 
     const data = await res.json();
@@ -571,10 +666,14 @@ btnModalConfirm.addEventListener('click', async () => {
       failedTableBody.innerHTML = '';
       data.failedDetails.forEach(f => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong>${f.phone}</strong></td>
-          <td style="color: #f87171;">${f.error}</td>
-        `;
+        const phoneCell = document.createElement('td');
+        const phone = document.createElement('strong');
+        phone.textContent = f.phone;
+        phoneCell.append(phone);
+        const errorCell = document.createElement('td');
+        errorCell.style.color = '#f87171';
+        errorCell.textContent = f.error;
+        tr.append(phoneCell, errorCell);
         failedTableBody.appendChild(tr);
       });
     } else {

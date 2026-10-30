@@ -1,28 +1,39 @@
-/**
- * Supported template keys to Meta template names mapping.
- */
-export const TEMPLATE_CONFIG = {
-  'hello': { name: 'hello', defaultLang: 'en_US' },
-  'hi': { name: 'hi', defaultLang: 'en_US' },
-  'ek kam hai': { name: 'ek_kam_hai', defaultLang: 'en_US' }
-};
+const GRAPH_API_VERSION = 'v21.0';
 
-export function resolveTemplate(templateKey, preferredLang) {
-  const normalizedKey = String(templateKey || '').trim().toLowerCase();
-  const snakeKey = normalizedKey.replace(/\s+/g, '_');
-
-  let entry = TEMPLATE_CONFIG[normalizedKey] || 
-    Object.values(TEMPLATE_CONFIG).find(t => t.name === snakeKey || t.name === normalizedKey);
-
-  if (!entry) {
-    // If not one of the presets, allow custom template name
-    entry = { name: snakeKey, defaultLang: 'en_US' };
+export async function getApprovedMessageTemplates() {
+  const accessToken = process.env.ACCESS_TOKEN;
+  const wabaId = process.env.WABA_ID;
+  if (!accessToken || !wabaId) {
+    throw new Error('ACCESS_TOKEN and WABA_ID must be set in environment variables');
   }
 
-  return {
-    name: entry.name,
-    languageCode: preferredLang || entry.defaultLang
-  };
+  const templates = [];
+  let after;
+  do {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(wabaId)}/message_templates`);
+    url.searchParams.set('fields', 'name,status,language');
+    url.searchParams.set('limit', '100');
+    if (after) url.searchParams.set('after', after);
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data?.error?.message || `HTTP ${response.status} ${response.statusText}`);
+      error.metaCode = data?.error?.code;
+      throw error;
+    }
+
+    for (const template of data.data || []) {
+      if (template.status === 'APPROVED' && template.name && template.language) {
+        templates.push({ name: template.name, language: template.language });
+      }
+    }
+    after = data.paging?.cursors?.after;
+  } while (after);
+
+  return templates;
 }
 
 /**
@@ -36,7 +47,7 @@ async function callMetaGraphApi(payload) {
     throw new Error('ACCESS_TOKEN and PHONE_NUMBER_ID must be set in environment variables');
   }
 
-  const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
 
   const response = await fetch(url, {
     method: 'POST',
@@ -51,7 +62,9 @@ async function callMetaGraphApi(payload) {
 
   if (!response.ok) {
     const errorDetails = data?.error?.message || `HTTP ${response.status} ${response.statusText}`;
-    throw new Error(errorDetails);
+    const error = new Error(errorDetails);
+    error.metaCode = data?.error?.code;
+    throw error;
   }
 
   return data;
@@ -63,12 +76,15 @@ async function callMetaGraphApi(payload) {
 export async function sendTemplateMessage({
   to,
   templateName,
-  languageCode = 'en_US',
+  languageCode,
   headerImageUrl = '',
   bodyVariables = [],
   urlButtonValue = '',
   quickReplyPayloads = []
 }) {
+  if (typeof templateName !== 'string' || !templateName || typeof languageCode !== 'string' || !languageCode) {
+    throw new Error('An exact Meta template name and language code are required.');
+  }
   const components = [];
 
   // 1. Header image

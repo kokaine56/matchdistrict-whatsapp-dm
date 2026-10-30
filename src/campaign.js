@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import csvParser from 'csv-parser';
-import { resolveTemplate, sendTemplateMessage } from './whatsapp.js';
+import { sendTemplateMessage } from './whatsapp.js';
 import {
   getCurrentMonthKey,
   getMonthSentCount,
@@ -62,29 +62,48 @@ export async function getRecipientsSummary() {
   };
 }
 
-/** Append manually entered recipients without replacing the uploaded CSV. */
-export async function addRecipientsToCsv(rawNumbers, optedIn = false) {
-  if (!Array.isArray(rawNumbers) || rawNumbers.length === 0) {
-    throw new Error('Enter at least one phone number.');
-  }
+function parsePhoneEntries(input) {
+  const pieces = String(input || '').split(/[\s,]+/).filter(Boolean);
+  const seen = new Set();
+  const valid = [];
+  const invalid = [];
+  const duplicates = [];
 
-  const normalizedNumbers = rawNumbers.map(value => String(value || '').trim());
-  const invalid = normalizedNumbers.filter(value => {
-    const digits = value.replace(/\D/g, '');
-    return digits.length < 7 || digits.length > 15;
-  });
-  if (invalid.length > 0) {
-    throw new Error(`Invalid phone number(s): ${invalid.join(', ')}`);
+  for (const piece of pieces) {
+    const trimmed = piece.trim();
+    const cleaned = trimmed.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+    if (!cleaned) continue;
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 15) {
+      invalid.push({ number: trimmed, reason: 'Must contain 10 to 15 digits, including the country code.' });
+      continue;
+    }
+    if (seen.has(digits)) {
+      duplicates.push(cleaned);
+      continue;
+    }
+    seen.add(digits);
+    valid.push(cleaned);
   }
+  return { valid, invalid, duplicates };
+}
 
+async function writeRecipients(recipients) {
+  const escapeCsv = value => `"${String(value).replace(/"/g, '""')}"`;
+  const csv = ['phone,opted_in', ...recipients.map(row => `${escapeCsv(row.phone)},${row.optedIn}`)].join('\n') + '\n';
+  await fs.promises.writeFile(CSV_FILE, csv, 'utf8');
+}
+
+/** Add valid manually entered recipients while preserving existing rows. */
+export async function addRecipientsToCsv(input, optedIn = false) {
+  const { valid, invalid, duplicates } = parsePhoneEntries(input);
   const current = await readRecipientsFromCsv();
   const existingNumbers = new Set(current.map(recipient => recipient.phone.replace(/\D/g, '')));
   const added = [];
-  const skipped = [];
-  for (const value of normalizedNumbers) {
+  for (const value of valid) {
     const digits = value.replace(/\D/g, '');
     if (existingNumbers.has(digits)) {
-      skipped.push(value);
+      duplicates.push(value);
       continue;
     }
     existingNumbers.add(digits);
@@ -92,13 +111,28 @@ export async function addRecipientsToCsv(rawNumbers, optedIn = false) {
   }
 
   if (added.length > 0) {
-    const rows = [...current, ...added];
-    const escapeCsv = value => `"${String(value).replace(/"/g, '""')}"`;
-    const csv = ['phone,opted_in', ...rows.map(row => `${escapeCsv(row.phone)},${row.optedIn}`)].join('\n') + '\n';
-    await fs.promises.writeFile(CSV_FILE, csv, 'utf8');
+    await writeRecipients([...current, ...added]);
   }
 
-  return { added: added.length, skipped: skipped.length };
+  return { added: added.length, skipped: duplicates.length, invalid };
+}
+
+/** Update consent status for every CSV row matching a phone number. */
+export async function updateRecipientOptIn(phone, optedIn) {
+  const normalized = String(phone || '').replace(/\D/g, '');
+  if (normalized.length < 10 || normalized.length > 15 || typeof optedIn !== 'boolean') {
+    throw new Error('A valid 10 to 15 digit number and opt-in status are required.');
+  }
+  const current = await readRecipientsFromCsv();
+  let updated = false;
+  const recipients = current.map(recipient => {
+    if (recipient.phone.replace(/\D/g, '') !== normalized) return recipient;
+    updated = true;
+    return { ...recipient, optedIn };
+  });
+  if (!updated) throw new Error('Recipient not found.');
+  await writeRecipients(recipients);
+  return { phone: normalized, optedIn };
 }
 
 /**
@@ -106,12 +140,12 @@ export async function addRecipientsToCsv(rawNumbers, optedIn = false) {
  */
 export async function runCampaign(overrideCampaignConfig = null) {
   const config = await loadConfig();
-  const campaignSettings = overrideCampaignConfig || config.campaign || {};
-
-  const templateResolved = resolveTemplate(
-    campaignSettings.template || 'hello',
-    campaignSettings.languageCode || 'en_US'
-  );
+  const campaignSettings = { ...(config.campaign || {}), ...(overrideCampaignConfig || {}) };
+  const templateName = campaignSettings.template;
+  const languageCode = campaignSettings.languageCode;
+  if (typeof templateName !== 'string' || !templateName || typeof languageCode !== 'string' || !languageCode) {
+    throw new Error('Select an approved Meta template and its language before sending.');
+  }
 
   const monthlyLimit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
   const monthKey = getCurrentMonthKey();
@@ -171,8 +205,8 @@ export async function runCampaign(overrideCampaignConfig = null) {
     try {
       await sendTemplateMessage({
         to: normalized,
-        templateName: templateResolved.name,
-        languageCode: templateResolved.languageCode,
+        templateName,
+        languageCode,
         headerImageUrl: campaignSettings.headerImageUrl,
         bodyVariables: campaignSettings.bodyVariables,
         urlButtonValue: campaignSettings.urlButtonValue,
@@ -186,7 +220,10 @@ export async function runCampaign(overrideCampaignConfig = null) {
     } catch (err) {
       // 6. On failure: log error, do NOT count toward 800 limit, continue to next
       failedCount++;
-      failedDetails.push({ phone: normalized, error: err.message });
+      const templateError = [132001, 132000].includes(Number(err.metaCode))
+        ? `Meta error ${err.metaCode}: ${err.message} Template sent: ${templateName}; language sent: ${languageCode}.`
+        : err.message;
+      failedDetails.push({ phone: normalized, error: templateError });
       console.error(`[Campaign Error] Failed to send to ${normalized}:`, err.message);
     }
   }
@@ -195,7 +232,8 @@ export async function runCampaign(overrideCampaignConfig = null) {
     status: limitReached ? 'limit_reached' : 'completed',
     month: monthKey,
     monthlyLimit,
-    templateUsed: templateResolved.name,
+    templateUsed: templateName,
+    templateLanguage: languageCode,
     totalInCsv: recipients.length,
     sent: sentCount,
     alreadySentThisMonth: alreadySentCount,

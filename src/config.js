@@ -8,8 +8,8 @@ const CONFIG_FILE = path.resolve(__dirname, '../config.json');
 
 const DEFAULT_CONFIG = {
   campaign: {
-    template: 'hello',
-    languageCode: 'en_US',
+    template: '',
+    languageCode: '',
     headerImageUrl: '',
     bodyVariables: [],
     urlButtonValue: '',

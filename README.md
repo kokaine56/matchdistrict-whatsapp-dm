@@ -8,7 +8,7 @@ A production-ready WhatsApp outreach tool with an administrative web UI (plain H
 
 - **Admin Web Dashboard**: Single-password login protected by HTTP-only session cookies and startup SHA-256 hash comparison.
 - **Campaign Dispatcher (`POST /api/send-campaign`)**:
-  - Supports templates: `hello`, `hi`, and `ek kam hai`.
+  - Loads approved WhatsApp templates and their language codes from the configured Meta WABA.
   - Image header (URL or file upload saved in `/uploads`).
   - Dynamic body variables (`{{1}}`, `{{2}}`...).
   - Dynamic URL button parameters and quick-reply button payloads.
@@ -60,6 +60,7 @@ matchdistrict-whatsapp-dm/
 ```env
 ACCESS_TOKEN=your_meta_access_token_here
 PHONE_NUMBER_ID=your_phone_number_id_here
+WABA_ID=your_whatsapp_business_account_id_here
 WEBHOOK_VERIFY_TOKEN=matchdistrict_verify_token_123
 META_APP_SECRET=your_meta_app_secret_here
 MONTHLY_LIMIT=800
@@ -73,7 +74,7 @@ PUBLIC_BASE_URL=
 
 ## Render webhook deployment
 
-Set `WEBHOOK_VERIFY_TOKEN` and `META_APP_SECRET` in the Render service environment, alongside the existing WhatsApp credentials. Keep the existing Docker deployment; the server uses Render's `PORT` and binds to `0.0.0.0`.
+Set `WABA_ID` in the Render service environment alongside `ACCESS_TOKEN` and `PHONE_NUMBER_ID`; the token needs permission to read WhatsApp message templates. Also set `WEBHOOK_VERIFY_TOKEN` and `META_APP_SECRET`. Keep the existing Docker deployment; the server uses Render's `PORT` and binds to `0.0.0.0`.
 
 In the Meta app's WhatsApp webhook settings, use this public callback URL (replace the host with the service's assigned Render hostname):
 

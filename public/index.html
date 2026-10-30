@@ -74,18 +74,15 @@
             <div class="form-group">
               <label for="templateSelect">Approved Template</label>
               <select id="templateSelect" required>
-                <option value="hello">hello (Hello Greeting)</option>
-                <option value="hi">hi (Hi Short Greeting)</option>
-                <option value="ek kam hai">ek kam hai (Ek Kam Hai Follow-up)</option>
+                <option value="">Loading approved templates from Meta...</option>
               </select>
-              <p class="help-text">Only Meta-approved templates can be sent as first outreach.</p>
+              <p class="help-text">Only templates marked APPROVED by Meta are listed.</p>
             </div>
 
-            <!-- Language Code -->
             <div class="form-group">
-              <label for="languageCode">Language Code</label>
-              <input type="text" id="languageCode" value="en_US" placeholder="en_US">
-              <p class="help-text">Language code configured in Meta Manager (e.g. en_US, hi).</p>
+              <label for="languageCode">Template Language</label>
+              <input type="text" id="languageCode" readonly placeholder="Selected from Meta template">
+              <p class="help-text">The language code is selected with the template and sent exactly as Meta returns it.</p>
             </div>
 
             <!-- Header Image -->
@@ -260,13 +257,14 @@
 
         <div class="form-group manual-recipient-form">
           <label for="manualRecipientNumbers">Add phone numbers manually</label>
-          <textarea id="manualRecipientNumbers" placeholder="+15551234567&#10;+919876543210" rows="4"></textarea>
-          <p class="help-text">Enter one number per line, or separate numbers with commas. Include each country code.</p>
           <label class="checkbox-label">
             <input type="checkbox" id="manualRecipientsOptedIn">
-            These contacts have opted in to receive WhatsApp messages
+            I confirm these numbers have agreed to receive WhatsApp messages from me
           </label>
+          <textarea id="manualRecipientNumbers" placeholder="+15551234567&#10;+919876543210" rows="4"></textarea>
+          <p class="help-text">Separate numbers with commas, spaces, or new lines. Include country code; use 10 to 15 digits per number.</p>
           <button type="button" class="btn btn-primary" id="btnAddRecipients">Add to Recipients List</button>
+          <div id="recipientInputFeedback" class="recipient-input-feedback" role="status" aria-live="polite" style="display: none;"></div>
         </div>
 
         <!-- Summary Counts -->
@@ -293,6 +291,7 @@
                 <th>#</th>
                 <th>Phone Number</th>
                 <th>Status</th>
+                <th>Toggle</th>
               </tr>
             </thead>
             <tbody id="recipientsTableBody">
