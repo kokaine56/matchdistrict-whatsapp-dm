@@ -63,6 +63,7 @@ const optedInCount = document.getElementById('optedInCount');
 const optedOutCount = document.getElementById('optedOutCount');
 const recipientsTableBody = document.getElementById('recipientsTableBody');
 const toggleAllRecipients = document.getElementById('toggleAllRecipients');
+const allRecipientsOptedInCount = document.getElementById('allRecipientsOptedInCount');
 
 // Send & Results Elements
 const btnSendCampaign = document.getElementById('btnSendCampaign');
@@ -280,6 +281,7 @@ async function loadRecipients() {
   optedInCount.textContent = currentRecipients.optedIn;
   optedOutCount.textContent = currentRecipients.optedOut;
   const allOptedIn = currentRecipients.total > 0 && currentRecipients.optedIn === currentRecipients.total;
+  allRecipientsOptedInCount.textContent = `${currentRecipients.optedIn} of ${currentRecipients.total} opted in`;
   toggleAllRecipients.setAttribute('aria-checked', String(allOptedIn));
   toggleAllRecipients.disabled = currentRecipients.total === 0;
 

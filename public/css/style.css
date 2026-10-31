@@ -513,8 +513,11 @@ textarea {
 
 /* Recipients Table */
 .all-recipients-toggle {
+  position: sticky;
+  top: 5rem;
+  z-index: 40;
   width: 100%;
-  min-height: 48px;
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -523,12 +526,26 @@ textarea {
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  background: var(--bg-surface-elevated);
+  background: var(--bg-surface);
   color: var(--text-primary);
   font: inherit;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  box-shadow: var(--shadow-md);
+}
+
+.all-recipients-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.all-recipients-label small {
+  margin-top: 0.2rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 
 .all-recipients-toggle:disabled {
@@ -537,8 +554,8 @@ textarea {
 }
 
 .all-recipients-switch {
-  width: 2.6rem;
-  height: 1.45rem;
+  width: 3.25rem;
+  height: 1.9rem;
   flex: none;
   padding: 2px;
   border: 1px solid var(--border-color);
@@ -549,8 +566,8 @@ textarea {
 
 .all-recipients-switch > span {
   display: block;
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.4rem;
+  height: 1.4rem;
   border-radius: 50%;
   background: #fff;
   transition: transform 0.15s ease;
@@ -562,7 +579,7 @@ textarea {
 }
 
 .all-recipients-toggle[aria-checked="true"] .all-recipients-switch > span {
-  transform: translateX(1.1rem);
+  transform: translateX(1.35rem);
 }
 
 .recipients-summary {
@@ -777,6 +794,7 @@ th {
   .tab-btn.active { border-bottom-color:transparent; }
   .card { padding:1rem; margin-bottom:.75rem; }
   .card-title { font-size:1rem; }
+  .all-recipients-toggle { top:calc(8rem + env(safe-area-inset-top)); min-height:56px; }
   .grid-2 { grid-template-columns:minmax(0,1fr); gap:.75rem; }
   .preview-panel { order:2; }
   .preview-panel:not([open]) .preview-container { display:none; }
