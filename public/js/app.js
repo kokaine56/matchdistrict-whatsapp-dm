@@ -62,6 +62,7 @@ const totalRecipientsCount = document.getElementById('totalRecipientsCount');
 const optedInCount = document.getElementById('optedInCount');
 const optedOutCount = document.getElementById('optedOutCount');
 const recipientsTableBody = document.getElementById('recipientsTableBody');
+const toggleAllRecipients = document.getElementById('toggleAllRecipients');
 
 // Send & Results Elements
 const btnSendCampaign = document.getElementById('btnSendCampaign');
@@ -278,14 +279,17 @@ async function loadRecipients() {
   totalRecipientsCount.textContent = currentRecipients.total;
   optedInCount.textContent = currentRecipients.optedIn;
   optedOutCount.textContent = currentRecipients.optedOut;
+  const allOptedIn = currentRecipients.total > 0 && currentRecipients.optedIn === currentRecipients.total;
+  toggleAllRecipients.setAttribute('aria-checked', String(allOptedIn));
+  toggleAllRecipients.disabled = currentRecipients.total === 0;
 
   recipientsTableBody.innerHTML = '';
-  if (!currentRecipients.preview || currentRecipients.preview.length === 0) {
+  if (!currentRecipients.recipients || currentRecipients.recipients.length === 0) {
     recipientsTableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No recipients found in recipients.csv</td></tr>';
     return;
   }
 
-  currentRecipients.preview.forEach((r, idx) => {
+  currentRecipients.recipients.forEach((r, idx) => {
     const tr = document.createElement('tr');
     const numberCell = document.createElement('td');
     const number = document.createElement('strong');
@@ -337,6 +341,32 @@ async function setRecipientOptIn(phone, optedIn, toggle) {
     toggle.disabled = false;
   }
 }
+
+toggleAllRecipients.addEventListener('click', async () => {
+  const total = currentRecipients?.total || 0;
+  if (total === 0) return;
+  const allOptedIn = currentRecipients.optedIn === total;
+  const optedIn = !allOptedIn;
+  const status = optedIn ? 'Opted In' : 'Opted Out';
+  if (!window.confirm(`Set all ${total} numbers to ${status}?`)) return;
+
+  toggleAllRecipients.disabled = true;
+  try {
+    const response = await fetch('/api/recipients/opt-in/all', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ optedIn })
+    });
+    const data = await response.json();
+    if (response.status === 401) return (window.location.href = '/login');
+    if (!response.ok) throw new Error(data.error || 'Could not update all recipients');
+    await loadRecipients();
+    showAlert(`All recipients marked ${status}.`);
+  } catch (err) {
+    showAlert('Could not update all recipients: ' + err.message, 'danger');
+    toggleAllRecipients.disabled = total === 0;
+  }
+});
 
 // --- DYNAMIC VARIABLES LOGIC ---
 function addVariableRow(val = '') {

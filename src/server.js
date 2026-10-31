@@ -14,7 +14,7 @@ import {
   COOKIE_NAME
 } from './auth.js';
 import { loadConfig, saveConfig } from './config.js';
-import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, CSV_FILE } from './campaign.js';
+import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, CSV_FILE } from './campaign.js';
 import { getCurrentMonthKey, getMonthSentCount } from './tracker.js';
 import { getApprovedMessageTemplates, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
@@ -359,9 +359,20 @@ app.patch('/api/recipients/opt-in', requireAuth, async (req, res) => {
   }
 });
 
+app.patch('/api/recipients/opt-in/all', requireAuth, async (req, res) => {
+  try {
+    const result = await updateAllRecipientOptIn(req.body?.optedIn);
+    const summary = await getRecipientsSummary();
+    res.json({ status: 'ok', ...result, summary });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Upload Recipients CSV
 app.post('/api/upload-recipients', requireAuth, uploadCsv.single('file'), async (req, res) => {
   try {
+    await normalizeRecipientsCsv();
     const summary = await getRecipientsSummary();
     res.json({ status: 'ok', summary });
   } catch (err) {

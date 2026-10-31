@@ -512,6 +512,59 @@ textarea {
 }
 
 /* Recipients Table */
+.all-recipients-toggle {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.all-recipients-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.all-recipients-switch {
+  width: 2.6rem;
+  height: 1.45rem;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  transition: background 0.15s ease;
+}
+
+.all-recipients-switch > span {
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.all-recipients-toggle[aria-checked="true"] .all-recipients-switch {
+  background: var(--wa-teal);
+  border-color: var(--wa-teal);
+}
+
+.all-recipients-toggle[aria-checked="true"] .all-recipients-switch > span {
+  transform: translateX(1.1rem);
+}
+
 .recipients-summary {
   display: flex;
   gap: 1rem;

@@ -26,18 +26,23 @@ export async function readRecipientsFromCsv(filePath = CSV_FILE) {
 
   return new Promise((resolve, reject) => {
     const recipients = [];
+    const seenPhones = new Set();
     fs.createReadStream(filePath)
       .pipe(csvParser())
       .on('data', (row) => {
         const phoneKey = Object.keys(row).find(k => /phone|number|mobile/i.test(k)) || Object.keys(row)[0];
         const rawPhone = row[phoneKey];
+        const phone = rawPhone ? String(rawPhone).trim() : '';
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 10 || digits.length > 15 || seenPhones.has(digits)) return;
+        seenPhones.add(digits);
 
         const optKey = Object.keys(row).find(k => /opt/i.test(k));
         const rawOpt = optKey ? row[optKey] : 'false';
         const isOptedIn = String(rawOpt).trim().toLowerCase() === 'true';
 
         recipients.push({
-          phone: rawPhone ? String(rawPhone).trim() : '',
+          phone,
           optedIn: isOptedIn
         });
       })
@@ -58,7 +63,7 @@ export async function getRecipientsSummary() {
     total,
     optedIn,
     optedOut,
-    preview: recipients.slice(0, 50)
+    recipients
   };
 }
 
@@ -92,6 +97,13 @@ async function writeRecipients(recipients) {
   const escapeCsv = value => `"${String(value).replace(/"/g, '""')}"`;
   const csv = ['phone,opted_in', ...recipients.map(row => `${escapeCsv(row.phone)},${row.optedIn}`)].join('\n') + '\n';
   await fs.promises.writeFile(CSV_FILE, csv, 'utf8');
+}
+
+/** Save only valid, nonblank, unique recipients from an uploaded CSV. */
+export async function normalizeRecipientsCsv() {
+  const recipients = await readRecipientsFromCsv();
+  await writeRecipients(recipients);
+  return recipients.length;
 }
 
 /** Add valid manually entered recipients while preserving existing rows. */
@@ -133,6 +145,16 @@ export async function updateRecipientOptIn(phone, optedIn) {
   if (!updated) throw new Error('Recipient not found.');
   await writeRecipients(recipients);
   return { phone: normalized, optedIn };
+}
+
+/** Update consent status for every recipient. */
+export async function updateAllRecipientOptIn(optedIn) {
+  if (typeof optedIn !== 'boolean') {
+    throw new Error('An opt-in status is required.');
+  }
+  const recipients = await readRecipientsFromCsv();
+  await writeRecipients(recipients.map(recipient => ({ ...recipient, optedIn })));
+  return { updated: recipients.length, optedIn };
 }
 
 /**
