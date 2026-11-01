@@ -810,6 +810,7 @@ function renderAutoReplyState(enabled) {
   }
   if (autoReplyToggleLabel) {
     autoReplyToggleLabel.textContent = state ? 'ON' : 'OFF';
+    autoReplyToggleLabel.style.color = state ? 'var(--brand-green)' : 'var(--text-muted)';
   }
   if (autoReplyStatus) {
     autoReplyStatus.textContent = `Auto-reply: ${state ? 'ON' : 'OFF'}`;
