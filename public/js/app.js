@@ -380,10 +380,17 @@ async function loadStats() {
     const remaining = Math.max(0, limit - sent);
     const percent = limit ? Math.min(100, (sent / limit) * 100) : 0;
 
-    // Header Counters
+    // Header Counters (Desktop & Mobile)
     if (sentCountDisplay) sentCountDisplay.textContent = sent;
     if (limitDisplay) limitDisplay.textContent = limit;
     if (usageProgressFill) usageProgressFill.style.width = `${percent}%`;
+
+    const dashQuotaSentMobile = document.getElementById('dashQuotaSentMobile');
+    const dashQuotaLimitMobile = document.getElementById('dashQuotaLimitMobile');
+    const dashQuotaProgressMobile = document.getElementById('dashQuotaProgressMobile');
+    if (dashQuotaSentMobile) dashQuotaSentMobile.textContent = sent;
+    if (dashQuotaLimitMobile) dashQuotaLimitMobile.textContent = limit;
+    if (dashQuotaProgressMobile) dashQuotaProgressMobile.style.width = `${percent}%`;
 
     // Dashboard Cards
     if (dashSentCount) dashSentCount.textContent = sent;
@@ -425,13 +432,13 @@ async function loadMessageTemplates() {
 
     if (dashTemplateStatus) {
       dashTemplateStatus.textContent = availableTemplates.length ? `${availableTemplates.length} Approved` : 'None';
-      dashTemplateStatus.className = `badge-tag ${availableTemplates.length ? 'badge-success' : 'badge-neutral'}`;
+      dashTemplateStatus.className = `summary-value font-medium ${availableTemplates.length ? 'text-emerald' : 'text-muted'}`;
     }
   } catch (err) {
     templateSelect.replaceChildren(new Option('Could not load templates from Meta', ''));
     if (dashTemplateStatus) {
       dashTemplateStatus.textContent = 'API Error';
-      dashTemplateStatus.className = 'badge-tag badge-danger';
+      dashTemplateStatus.className = 'summary-value font-medium text-danger';
     }
     showToast('Failed to load Meta templates: ' + err.message, 'danger');
   }
