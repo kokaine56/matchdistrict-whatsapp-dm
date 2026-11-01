@@ -3,365 +3,951 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>WhatsApp Outreach & Auto-Reply Console</title>
+  <title>MatchDistrict Outreach — WhatsApp Campaign & Automation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <!-- Top Navigation Header -->
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Global Alert (Fallback / Status) -->
+  <div id="globalAlert" style="display: none;" class="alert"></div>
+
+  <!-- Top Application Header -->
   <header class="app-header">
-    <div class="brand">
-      <svg viewBox="0 0 24 24">
-        <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.53 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.26-1.5-1.4-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.15.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.35-.77-1.85-.2-.49-.4-.42-.56-.43h-.47c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.18-.48-.3"/>
-      </svg>
-      <h1>MatchDistrict Outreach</h1>
-      <span class="badge">Meta Cloud API</span>
-    </div>
-    <div class="header-actions">
-      <div class="usage-counter" id="usageCounter">
-        <span>Monthly Cap: <strong id="sentCountDisplay">0</strong> / <span id="limitDisplay">800</span> used this month</span>
-        <span class="usage-progress" role="progressbar" aria-label="Monthly campaign usage" aria-valuemin="0" aria-valuemax="800" aria-valuenow="0"><span id="usageProgressFill"></span></span>
+    <div class="header-inner">
+      <div class="brand-group">
+        <div class="brand-logo" aria-hidden="true">
+          <!-- WhatsApp / Outreach Emblem -->
+          <svg viewBox="0 0 24 24" class="icon-brand" width="22" height="22">
+            <path fill="currentColor" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.53 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.26-1.5-1.4-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.15.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.35-.77-1.85-.2-.49-.4-.42-.56-.43h-.47c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.18-.48-.3"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">MatchDistrict</span>
+          <span class="brand-subtitle">Outreach</span>
+        </div>
+        <span class="status-indicator-pill" title="Meta WhatsApp Cloud API Connected">
+          <span class="pulse-dot"></span>
+          <span>Meta API</span>
+        </span>
       </div>
-      <span id="autoReplyStatus" class="auto-reply-status" aria-live="polite">Auto-reply: ON</span>
-      <form action="/logout" method="POST" style="margin: 0;">
-        <button type="submit" class="btn-logout">Logout</button>
-      </form>
-    </div>
-  </header>
 
-  <div class="container">
-    <div id="globalAlert" style="display: none;" class="alert"></div>
+      <!-- Desktop Main Navigation (3 Sections) -->
+      <nav class="desktop-nav" aria-label="Main Navigation">
+        <button type="button" class="nav-item active" data-view="dashboard-view">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="7" height="9" x="3" y="3" rx="1"/>
+            <rect width="7" height="5" x="14" y="3" rx="1"/>
+            <rect width="7" height="9" x="14" y="12" rx="1"/>
+            <rect width="7" height="5" x="3" y="16" rx="1"/>
+          </svg>
+          <span>Dashboard</span>
+        </button>
 
-    <!-- Navigation Tabs -->
-    <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="campaign-tab"><span>✉</span><span>Campaign</span></button>
-      <button class="tab-btn" data-tab="autoreply-tab"><span>↩</span><span>Auto-reply</span></button>
-      <button class="tab-btn" data-tab="recipients-tab"><span>♙</span><span>Recipients</span></button>
-      <button class="tab-btn" data-tab="send-tab"><span>➤</span><span>Send</span></button>
-      <button class="tab-btn" data-tab="webhook-tab"><span>⌁</span><span>Webhook</span></button>
-      <button class="tab-btn" data-tab="logs-tab"><span>▤</span><span>Live Log</span></button>
-    </div>
+        <button type="button" class="nav-item" data-view="messaging-view">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/>
+          </svg>
+          <span>Messaging</span>
+        </button>
 
-    <!-- TAB 4: WEBHOOK SETUP -->
-    <div id="webhook-tab" class="tab-content">
-      <div class="card">
-        <h2 class="card-title">Webhook Setup</h2>
-        <div id="webhookLocalWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem;">
-          Meta can't reach localhost. Use ngrok or a hosted URL.
-        </div>
-        <div class="webhook-value">
-          <div class="form-group">
-            <label for="webhookCallbackUrl">Callback URL</label>
-            <input id="webhookCallbackUrl" type="text" readonly>
+        <button type="button" class="nav-item" data-view="contacts-view">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>Contacts & Activity</span>
+        </button>
+      </nav>
+
+      <!-- Header Controls -->
+      <div class="header-controls">
+        <!-- Monthly Quota Pill -->
+        <div class="quota-pill" id="usageCounter" title="Monthly Free-Tier Outbound Limit">
+          <span class="quota-label">Cap:</span>
+          <strong id="sentCountDisplay">0</strong>
+          <span class="quota-separator">/</span>
+          <span id="limitDisplay">800</span>
+          <div class="quota-mini-progress usage-progress" role="progressbar" aria-label="Monthly quota used" aria-valuemin="0" aria-valuemax="800" aria-valuenow="0">
+            <div id="usageProgressFill" class="progress-bar-fill"></div>
           </div>
-          <button type="button" class="btn btn-secondary webhook-copy" data-copy-target="webhookCallbackUrl">Copy</button>
-        </div>
-        <div class="webhook-value">
-          <div class="form-group">
-            <label for="webhookVerifyToken">Verify token</label>
-            <input id="webhookVerifyToken" type="text" readonly>
-          </div>
-          <button type="button" class="btn btn-secondary webhook-copy" data-copy-target="webhookVerifyToken">Copy</button>
-        </div>
-        <p class="help-text">Meta Developer Dashboard &gt; WhatsApp &gt; Configuration &gt; Webhook &gt; Edit. Paste the Callback URL and Verify token, click Verify and save, then subscribe to the 'messages' field.</p>
-        <p id="webhookSetupError" class="help-text" style="display: none; color: var(--danger);"></p>
-      </div>
-    </div>
-
-    <!-- TAB 1: CAMPAIGN MESSAGE -->
-    <div id="campaign-tab" class="tab-content active">
-      <div class="grid-2">
-        <!-- Settings Form -->
-        <div class="card">
-          <h2 class="card-title">Campaign Template Settings</h2>
-          <form id="campaignForm">
-            <!-- Template Selection -->
-            <div class="form-group">
-              <label for="templateSelect">Approved Template</label>
-              <select id="templateSelect" required>
-                <option value="">Loading approved templates from Meta...</option>
-              </select>
-              <p class="help-text">Only templates marked APPROVED by Meta are listed.</p>
-            </div>
-
-            <div class="form-group">
-              <label for="languageCode">Template Language</label>
-              <input type="text" id="languageCode" readonly placeholder="Selected from Meta template">
-              <p class="help-text">The language code is selected with the template and sent exactly as Meta returns it.</p>
-            </div>
-
-            <div id="templateFields"></div>
-
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Save Campaign Settings</button>
-          </form>
         </div>
 
-        <!-- Live WhatsApp Simulator Preview -->
-        <details class="card preview-panel" open>
-          <summary class="card-title">Live Message Preview</summary>
-          <div class="preview-container">
-            <div class="preview-bubble">
-              <div id="previewHeader"></div>
-              <div class="preview-body" id="previewText">Hello!</div>
-              <div class="preview-footer" id="previewFooter"></div>
-              <div class="preview-actions" id="previewActions">
-                <!-- Action buttons rendered dynamically -->
-              </div>
-              <div class="preview-meta">12:00 PM ✓✓</div>
-            </div>
-          </div>
-        </details>
-      </div>
-    </div>
-
-    <!-- TAB 2: AUTO-REPLY RULES -->
-    <div id="autoreply-tab" class="tab-content">
-      <div class="card">
-        <h2 class="card-title">Auto-Reply Configuration (24h Window)</h2>
-        <div class="auto-reply-control">
-          <span>Auto-reply: <strong id="autoReplyToggleLabel">ON</strong></span>
-          <button type="button" id="autoReplyToggle" class="switch-control is-on" role="switch" aria-checked="true" aria-label="Auto-reply: ON / OFF"><span></span></button>
+        <!-- Auto-Reply Status Pill -->
+        <div class="auto-reply-pill">
+          <span id="autoReplyStatus" class="auto-reply-status">Auto-reply: ON</span>
         </div>
-        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">
-          Sent automatically when a recipient replies. User replies and auto-replies do not count toward the monthly limit.
-        </p>
 
-        <form id="autoReplyForm">
-          <!-- Type Selector -->
-          <label>Reply Format</label>
-          <div class="radio-group">
-            <div class="radio-card active" data-type="text">
-              <input type="radio" name="replyType" value="text" checked> Text Only
-            </div>
-            <div class="radio-card" data-type="image">
-              <input type="radio" name="replyType" value="image"> Image + Caption
-            </div>
-            <div class="radio-card" data-type="buttons">
-              <input type="radio" name="replyType" value="buttons"> Reply Buttons (up to 3)
-            </div>
-            <div class="radio-card" data-type="link">
-              <input type="radio" name="replyType" value="link"> CTA Link Button
-            </div>
-          </div>
+        <!-- Settings Button -->
+        <button type="button" class="btn-icon-subtle" id="btnOpenSettings" title="Settings & Webhook" aria-label="Open Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
 
-          <!-- Text Body -->
-          <div class="form-group">
-            <label for="autoReplyText">Message Text / Body</label>
-            <textarea id="autoReplyText" required placeholder="Hello! Thank you for reaching out..."></textarea>
-          </div>
-
-          <!-- Image settings (shown for image type) -->
-          <div id="imageReplyFields" class="form-group" style="display: none;">
-            <label>Image (URL or Upload)</label>
-            <div class="upload-row">
-              <input type="url" id="autoReplyImageUrl" placeholder="https://example.com/reply-banner.jpg">
-              <input type="file" id="autoReplyImageFile" accept="image/*">
-              <button type="button" class="btn btn-secondary btn-sm" id="btnUploadReplyImg">Upload</button>
-            </div>
-            <div style="margin-top: 0.5rem;">
-              <label for="autoReplyCaption">Image Caption (Optional)</label>
-              <input type="text" id="autoReplyCaption" placeholder="Optional image caption">
-            </div>
-          </div>
-
-          <!-- Buttons & Follow-Up Replies (shown for buttons type) -->
-          <div id="buttonReplyFields" class="form-group" style="display: none;">
-            <label>Interactive Buttons & Individual Follow-up Replies (Max 3)</label>
-            <p class="help-text" style="margin-bottom: 0.75rem;">
-              When a user taps one of these buttons, the corresponding follow-up message will be sent back to them!
-            </p>
-
-            <div id="buttonsList" style="display: flex; flex-direction: column; gap: 1rem;">
-              <!-- 3 Button Config Blocks -->
-              <div class="card" style="background: var(--bg-primary); padding: 1rem; margin: 0;">
-                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                  <input type="text" id="btn1_id" value="btn_1" placeholder="Button 1 ID" style="width: 30%;">
-                  <input type="text" id="btn1_title" value="About Us" placeholder="Button 1 Label (Max 20 chars)" style="width: 70%;">
-                </div>
-                <label style="font-size: 0.75rem;">Follow-up reply when Button 1 is tapped:</label>
-                <textarea id="btn1_reply" style="min-height: 60px;" placeholder="Message sent when user taps Button 1..."></textarea>
-              </div>
-
-              <div class="card" style="background: var(--bg-primary); padding: 1rem; margin: 0;">
-                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                  <input type="text" id="btn2_id" value="btn_2" placeholder="Button 2 ID" style="width: 30%;">
-                  <input type="text" id="btn2_title" value="Support" placeholder="Button 2 Label (Max 20 chars)" style="width: 70%;">
-                </div>
-                <label style="font-size: 0.75rem;">Follow-up reply when Button 2 is tapped:</label>
-                <textarea id="btn2_reply" style="min-height: 60px;" placeholder="Message sent when user taps Button 2..."></textarea>
-              </div>
-
-              <div class="card" style="background: var(--bg-primary); padding: 1rem; margin: 0;">
-                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                  <input type="text" id="btn3_id" value="btn_3" placeholder="Button 3 ID (Optional)" style="width: 30%;">
-                  <input type="text" id="btn3_title" value="" placeholder="Button 3 Label (Optional)" style="width: 70%;">
-                </div>
-                <label style="font-size: 0.75rem;">Follow-up reply when Button 3 is tapped:</label>
-                <textarea id="btn3_reply" style="min-height: 60px;" placeholder="Message sent when user taps Button 3..."></textarea>
-              </div>
-            </div>
-          </div>
-
-          <!-- Link Button fields (shown for link type) -->
-          <div id="linkReplyFields" class="form-group" style="display: none;">
-            <label>Call-To-Action Link Button</label>
-            <div style="display: flex; gap: 0.5rem;">
-              <input type="text" id="linkTitle" placeholder="Button Label (e.g. Visit MatchDistrict)" style="width: 40%;">
-              <input type="url" id="linkUrl" placeholder="https://matchdistrict.com" style="width: 60%;">
-            </div>
-          </div>
-
-          <button type="submit" class="btn btn-primary" style="width: 100%;">Save Auto-Reply Rules</button>
+        <!-- Logout Form -->
+        <form action="/logout" method="POST" style="margin: 0;">
+          <button type="submit" class="btn-icon-subtle" title="Log Out" aria-label="Log Out">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" x2="9" y1="12" y2="12"/>
+            </svg>
+          </button>
         </form>
       </div>
     </div>
+  </header>
 
-    <!-- TAB 3: RECIPIENTS & DISPATCH -->
-    <div id="recipients-tab" class="tab-content">
-      <div class="card">
-        <h2 class="card-title">Recipients List & Upload</h2>
+  <!-- Main Container -->
+  <main class="app-main">
+    <div class="content-wrapper">
 
-        <button type="button" class="all-recipients-toggle" id="toggleAllRecipients" role="switch" aria-checked="false" disabled>
-          <span class="all-recipients-label">
-            <span>All Opted In</span>
-            <small id="allRecipientsOptedInCount">0 of 0 opted in</small>
-          </span>
-          <span class="all-recipients-switch" aria-hidden="true"><span></span></span>
-        </button>
-        
-        <!-- Upload CSV Box -->
-        <div class="form-group">
-          <label>Upload recipients.csv (Columns: phone, opted_in)</label>
-          <div class="upload-row">
-            <input type="file" id="recipientsCsvFile" accept=".csv">
-            <button type="button" class="btn btn-secondary" id="btnUploadCsv">Upload & Replace CSV</button>
+      <!-- ========================================== -->
+      <!-- SECTION 1: DASHBOARD                      -->
+      <!-- ========================================== -->
+      <section id="dashboard-view" class="view-panel active">
+        <!-- Top Overview Bar -->
+        <div class="dashboard-greeting-row">
+          <div>
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-subtitle">WhatsApp Cloud API outreach overview and operational status</p>
           </div>
-          <p class="help-text">Phone numbers must include country code. Only opted_in=true numbers are sent to.</p>
-        </div>
-
-        <div class="form-group manual-recipient-form">
-          <label for="manualRecipientNumbers">Add phone numbers manually</label>
-          <label class="checkbox-label">
-            <input type="checkbox" id="manualRecipientsOptedIn">
-            I confirm these numbers have agreed to receive WhatsApp messages from me
-          </label>
-          <textarea id="manualRecipientNumbers" placeholder="+15551234567&#10;+919876543210" rows="4"></textarea>
-          <p class="help-text">Separate numbers with commas, spaces, or new lines. Include country code; use 10 to 15 digits per number.</p>
-          <button type="button" class="btn btn-primary" id="btnAddRecipients">Add to Recipients List</button>
-          <div id="recipientInputFeedback" class="recipient-input-feedback" role="status" aria-live="polite" style="display: none;"></div>
-        </div>
-
-        <!-- Summary Counts -->
-        <div class="recipients-summary">
-          <div class="summary-chip">
-            <span class="count" id="totalRecipientsCount">0</span>
-            <span class="help-text">Total in CSV</span>
-          </div>
-          <div class="summary-chip opted-in">
-            <span class="count" id="optedInCount">0</span>
-            <span class="help-text">Opted In (Eligible)</span>
-          </div>
-          <div class="summary-chip opted-out">
-            <span class="count" id="optedOutCount">0</span>
-            <span class="help-text">Opted Out (Skipped)</span>
+          <!-- Quick Action Buttons -->
+          <div class="dashboard-quick-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnQuickRecipients">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Manage Contacts</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnQuickAutoReply">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
+              <span>Auto-reply Rules</span>
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" id="btnQuickSend">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <span>Send Campaign</span>
+            </button>
           </div>
         </div>
 
-        <!-- Table Preview -->
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Phone Number</th>
-                <th>Status</th>
-                <th>Toggle</th>
-              </tr>
-            </thead>
-            <tbody id="recipientsTableBody">
-              <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Loading recipients...</td></tr>
-            </tbody>
-          </table>
+        <!-- 5 Compact Statistics Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-card-header">
+              <span class="stat-label">Messages Sent</span>
+              <span class="stat-icon-wrap stat-icon-green">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              </span>
+            </div>
+            <div class="stat-value" id="dashSentCount">0</div>
+            <div class="stat-subtext">This calendar month</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-header">
+              <span class="stat-label">Remaining Quota</span>
+              <span class="stat-icon-wrap stat-icon-blue">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+            </div>
+            <div class="stat-value" id="dashRemainingCount">800</div>
+            <div class="stat-subtext">Free tier monthly slots</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-header">
+              <span class="stat-label">Monthly Limit</span>
+              <span class="stat-icon-wrap stat-icon-neutral">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </span>
+            </div>
+            <div class="stat-value" id="dashLimitCount">800</div>
+            <div class="stat-subtext">Hard cap to avoid charges</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-header">
+              <span class="stat-label">Eligible Contacts</span>
+              <span class="stat-icon-wrap stat-icon-emerald">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
+              </span>
+            </div>
+            <div class="stat-value" id="dashEligibleCount">0</div>
+            <div class="stat-subtext"><span id="dashTotalContactsSub">0</span> total contacts in list</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-card-header">
+              <span class="stat-label">Auto-Reply 24h</span>
+              <span class="stat-icon-wrap stat-icon-teal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
+              </span>
+            </div>
+            <div class="stat-value">
+              <span id="dashAutoReplyBadge" class="badge-tag badge-success">ACTIVE</span>
+            </div>
+            <div class="stat-subtext">Free 24h conversation replies</div>
+          </div>
         </div>
-      </div>
 
-    </div>
+        <!-- Dashboard Two-Column Grid: Active Campaign & Recent Activity -->
+        <div class="dashboard-grid">
+          <!-- Active Campaign Overview Card -->
+          <div class="card campaign-overview-card">
+            <div class="card-header-clean">
+              <div class="card-header-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                <h2>Campaign Overview</h2>
+              </div>
+              <span id="dashTemplateStatus" class="badge-tag badge-neutral">Checking Meta...</span>
+            </div>
+            
+            <div class="card-body-clean">
+              <div class="template-summary-box">
+                <div class="template-summary-row">
+                  <span class="summary-label">Approved Template:</span>
+                  <span class="summary-value" id="dashTemplateName">—</span>
+                </div>
+                <div class="template-summary-row">
+                  <span class="summary-label">Language:</span>
+                  <span class="summary-value" id="dashTemplateLang">—</span>
+                </div>
+                <div class="template-summary-row">
+                  <span class="summary-label">Eligible Target Audience:</span>
+                  <span class="summary-value font-semibold text-emerald" id="dashTemplateAudience">0 contacts</span>
+                </div>
+              </div>
 
-    <!-- TAB: SEND -->
-    <div id="send-tab" class="tab-content">
-      <div class="card" style="border-color: var(--wa-teal);">
-        <h2 class="card-title" style="color: var(--wa-green);">Dispatch Campaign</h2>
-        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
-          Sends the approved template message to all eligible (opted-in) phone numbers. Hard capped at 800 unique users per calendar month.
-        </p>
+              <div class="campaign-dispatch-hint">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Only approved Meta templates can initiate outbound conversations. Recipients must have agreed to opt in.</span>
+              </div>
 
-        <button type="button" class="btn btn-success" id="btnSendCampaign" style="padding: 0.85rem 1.75rem; font-size: 1rem;">
-          🚀 Send Campaign Now
-        </button>
+              <div class="card-actions-row">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnDashEditCampaign">
+                  Edit Template & Variables
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnDashGoSend">
+                  Dispatch Campaign →
+                </button>
+              </div>
+            </div>
+          </div>
 
-        <!-- Dispatch Results Container -->
-        <div id="resultsCard" style="display: none; margin-top: 1.5rem;">
-          <h3 style="font-size: 1rem; margin-bottom: 0.75rem;">Campaign Execution Summary</h3>
-          <div id="resultsAlert" class="alert"></div>
+          <!-- Recent Activity Card -->
+          <div class="card recent-activity-card">
+            <div class="card-header-clean">
+              <div class="card-header-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <h2>Recent Activity</h2>
+              </div>
+              <button type="button" class="btn-link-action" id="btnDashViewAllActivity">View all logs →</button>
+            </div>
+            
+            <div class="card-body-clean">
+              <div id="dashActivityList" class="compact-activity-list" aria-live="polite">
+                <div class="empty-state-compact">
+                  <p>Loading recent outreach activity...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <div id="failedSection" style="display: none; margin-top: 1rem;">
-            <h4 style="color: var(--danger); font-size: 0.9rem; margin-bottom: 0.5rem;">Failed Numbers & Errors</h4>
-            <div class="table-wrap" style="max-height: 200px;">
-              <table>
+      <!-- ========================================== -->
+      <!-- SECTION 2: MESSAGING                      -->
+      <!-- ========================================== -->
+      <section id="messaging-view" class="view-panel">
+        <div class="section-header-row">
+          <div>
+            <h1 class="page-title">Messaging</h1>
+            <p class="page-subtitle">Configure WhatsApp templates, 24-hour auto-reply rules, and campaign dispatch</p>
+          </div>
+
+          <!-- Internal Sub-navigation Tabs -->
+          <div class="subnav-pills" role="tablist" aria-label="Messaging Sections">
+            <button type="button" class="subnav-pill active" data-subtab="msg-campaign-tab">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              <span>1. Campaign Template</span>
+            </button>
+            <button type="button" class="subnav-pill" data-subtab="msg-autoreply-tab">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
+              <span>2. Auto-reply Rules</span>
+            </button>
+            <button type="button" class="subnav-pill" data-subtab="msg-send-tab">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <span>3. Send Campaign</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SUBTAB 1: CAMPAIGN TEMPLATE -->
+        <div id="msg-campaign-tab" class="subtab-panel active">
+          <div class="messaging-two-col">
+            <!-- Settings Form -->
+            <div class="card">
+              <div class="card-header-clean">
+                <div class="card-header-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <h2>Campaign Template Configuration</h2>
+                </div>
+              </div>
+
+              <div class="card-body-clean">
+                <form id="campaignForm">
+                  <div class="form-group">
+                    <label for="templateSelect" class="form-label">Approved Meta Template</label>
+                    <select id="templateSelect" class="form-control" required>
+                      <option value="">Loading approved templates from Meta...</option>
+                    </select>
+                    <span class="form-help">Only templates approved by Meta WhatsApp Business are listed.</span>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="languageCode" class="form-label">Template Language</label>
+                    <input type="text" id="languageCode" class="form-control" readonly placeholder="Auto-populated from Meta template">
+                    <span class="form-help">Selected automatically with the template.</span>
+                  </div>
+
+                  <!-- Dynamic Variables from Template Components -->
+                  <div id="templateFields" class="dynamic-fields-container"></div>
+
+                  <div class="form-actions-row">
+                    <button type="submit" class="btn btn-primary" id="btnSaveCampaign">
+                      Save Campaign Settings
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="btnGoToSendFromCampaign">
+                      Continue to Send →
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Live WhatsApp Smartphone Preview -->
+            <div class="card preview-card">
+              <div class="card-header-clean">
+                <div class="card-header-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+                  <h2>Live WhatsApp Preview</h2>
+                </div>
+                <span class="badge-tag badge-neutral">Interactive Simulation</span>
+              </div>
+
+              <div class="card-body-clean phone-simulator-wrap">
+                <div class="phone-frame">
+                  <!-- Phone Top Bar -->
+                  <div class="phone-top-bar">
+                    <div class="phone-contact-info">
+                      <div class="phone-avatar">MD</div>
+                      <div>
+                        <div class="phone-contact-name">
+                          <span>MatchDistrict</span>
+                          <svg class="verified-badge" width="12" height="12" viewBox="0 0 24 24" fill="#00A884"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                        </div>
+                        <div class="phone-contact-status">Official Business Account</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- WhatsApp Chat Canvas -->
+                  <div class="phone-chat-body">
+                    <div class="preview-bubble">
+                      <div id="previewHeader" class="preview-bubble-header"></div>
+                      <div class="preview-bubble-text" id="previewText">Hello!</div>
+                      <div class="preview-bubble-footer" id="previewFooter"></div>
+                      <div class="preview-bubble-actions" id="previewActions"></div>
+                      <div class="preview-bubble-meta">
+                        <span>12:00 PM</span>
+                        <svg class="double-check" width="14" height="14" viewBox="0 0 24 24" fill="#53BDEB"><path d="m1.5 12.5 4 4 10-10m3 3-9 9-2-2"/></svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUBTAB 2: AUTO-REPLY RULES -->
+        <div id="msg-autoreply-tab" class="subtab-panel">
+          <div class="card">
+            <div class="card-header-clean">
+              <div class="card-header-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
+                <h2>Auto-Reply Rules (24-Hour Conversation Window)</h2>
+              </div>
+              <div class="auto-reply-switch-wrap">
+                <span class="switch-status-label">Auto-reply: <strong id="autoReplyToggleLabel">ON</strong></span>
+                <button type="button" id="autoReplyToggle" class="switch-control is-on" role="switch" aria-checked="true" aria-label="Toggle Auto-reply: ON or OFF">
+                  <span class="switch-knob"></span>
+                </button>
+              </div>
+            </div>
+
+            <div class="card-body-clean">
+              <div class="info-callout">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Sent automatically whenever a recipient replies to your campaign within 24 hours. Auto-replies and inbound messages <strong>do not count toward the 800 monthly limit</strong>.</span>
+              </div>
+
+              <form id="autoReplyForm">
+                <!-- Reply Format Selector -->
+                <div class="form-group">
+                  <label class="form-label">Reply Format</label>
+                  <div class="format-radio-cards">
+                    <div class="radio-card active" data-type="text">
+                      <input type="radio" name="replyType" value="text" checked>
+                      <div class="radio-card-content">
+                        <strong>Text Only</strong>
+                        <span>Standard conversational message</span>
+                      </div>
+                    </div>
+
+                    <div class="radio-card" data-type="image">
+                      <input type="radio" name="replyType" value="image">
+                      <div class="radio-card-content">
+                        <strong>Image + Caption</strong>
+                        <span>Flyer, banner, or promotional graphic</span>
+                      </div>
+                    </div>
+
+                    <div class="radio-card" data-type="buttons">
+                      <input type="radio" name="replyType" value="buttons">
+                      <div class="radio-card-content">
+                        <strong>Reply Buttons</strong>
+                        <span>Up to 3 interactive tap options</span>
+                      </div>
+                    </div>
+
+                    <div class="radio-card" data-type="link">
+                      <input type="radio" name="replyType" value="link">
+                      <div class="radio-card-content">
+                        <strong>CTA Link Button</strong>
+                        <span>Direct link to website or signup</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Message Body -->
+                <div class="form-group">
+                  <label for="autoReplyText" class="form-label">Message Body</label>
+                  <textarea id="autoReplyText" class="form-control" rows="3" required placeholder="Hello! Thank you for contacting MatchDistrict..."></textarea>
+                </div>
+
+                <!-- Conditional: Image Reply Fields -->
+                <div id="imageReplyFields" class="conditional-field-box" style="display: none;">
+                  <label class="form-label">Image Media (URL or Upload)</label>
+                  <div class="upload-inline-row">
+                    <input type="url" id="autoReplyImageUrl" class="form-control" placeholder="https://example.com/reply-banner.jpg">
+                    <input type="file" id="autoReplyImageFile" accept="image/*" style="display: none;">
+                    <button type="button" class="btn btn-secondary" id="btnUploadReplyImg">Upload File</button>
+                  </div>
+                  <div style="margin-top: 0.75rem;">
+                    <label for="autoReplyCaption" class="form-label">Image Caption (Optional)</label>
+                    <input type="text" id="autoReplyCaption" class="form-control" placeholder="Optional caption displayed under image">
+                  </div>
+                </div>
+
+                <!-- Conditional: Interactive Buttons Fields -->
+                <div id="buttonReplyFields" class="conditional-field-box" style="display: none;">
+                  <label class="form-label">Interactive Buttons & Follow-Up Replies (Max 3)</label>
+                  <p class="form-help" style="margin-bottom: 0.75rem;">When a user taps one of these buttons, the configured follow-up message will be dispatched automatically.</p>
+
+                  <div id="buttonsList" class="buttons-config-stack">
+                    <!-- Button 1 -->
+                    <div class="button-config-card">
+                      <div class="button-id-title-row">
+                        <input type="text" id="btn1_id" class="form-control btn-id-input" value="btn_1" placeholder="ID (btn_1)">
+                        <input type="text" id="btn1_title" class="form-control" value="About Us" placeholder="Button 1 Label (Max 20 chars)">
+                      </div>
+                      <label for="btn1_reply" class="form-label-sub">Follow-up reply when tapped:</label>
+                      <textarea id="btn1_reply" class="form-control" rows="2" placeholder="Message sent when Button 1 is tapped..."></textarea>
+                    </div>
+
+                    <!-- Button 2 -->
+                    <div class="button-config-card">
+                      <div class="button-id-title-row">
+                        <input type="text" id="btn2_id" class="form-control btn-id-input" value="btn_2" placeholder="ID (btn_2)">
+                        <input type="text" id="btn2_title" class="form-control" value="Support" placeholder="Button 2 Label (Max 20 chars)">
+                      </div>
+                      <label for="btn2_reply" class="form-label-sub">Follow-up reply when tapped:</label>
+                      <textarea id="btn2_reply" class="form-control" rows="2" placeholder="Message sent when Button 2 is tapped..."></textarea>
+                    </div>
+
+                    <!-- Button 3 -->
+                    <div class="button-config-card">
+                      <div class="button-id-title-row">
+                        <input type="text" id="btn3_id" class="form-control btn-id-input" value="btn_3" placeholder="ID (btn_3)">
+                        <input type="text" id="btn3_title" class="form-control" value="" placeholder="Button 3 Label (Optional)">
+                      </div>
+                      <label for="btn3_reply" class="form-label-sub">Follow-up reply when tapped:</label>
+                      <textarea id="btn3_reply" class="form-control" rows="2" placeholder="Message sent when Button 3 is tapped..."></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Conditional: CTA Link Field -->
+                <div id="linkReplyFields" class="conditional-field-box" style="display: none;">
+                  <label class="form-label">Call-To-Action Link Button</label>
+                  <div class="link-fields-row">
+                    <input type="text" id="linkTitle" class="form-control" placeholder="Button Label (e.g. Visit Website)">
+                    <input type="url" id="linkUrl" class="form-control" placeholder="https://matchdistrict.com">
+                  </div>
+                </div>
+
+                <div class="form-actions-row">
+                  <button type="submit" class="btn btn-primary" id="btnSaveAutoReply">
+                    Save Auto-Reply Rules
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUBTAB 3: SEND CAMPAIGN -->
+        <div id="msg-send-tab" class="subtab-panel">
+          <div class="card send-dispatch-card">
+            <div class="card-header-clean">
+              <div class="card-header-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <h2>Dispatch Campaign</h2>
+              </div>
+              <span class="badge-tag badge-success">Ready</span>
+            </div>
+
+            <div class="card-body-clean">
+              <!-- Dispatch Summary Cards -->
+              <div class="dispatch-summary-grid">
+                <div class="dispatch-summary-item">
+                  <span class="dispatch-summary-label">Target Template</span>
+                  <strong class="dispatch-summary-value" id="sendSummaryTemplate">None selected</strong>
+                </div>
+
+                <div class="dispatch-summary-item">
+                  <span class="dispatch-summary-label">Template Language</span>
+                  <strong class="dispatch-summary-value" id="sendSummaryLang">—</strong>
+                </div>
+
+                <div class="dispatch-summary-item">
+                  <span class="dispatch-summary-label">Eligible Recipients</span>
+                  <strong class="dispatch-summary-value text-emerald" id="sendSummaryRecipients">0 opted-in</strong>
+                </div>
+
+                <div class="dispatch-summary-item">
+                  <span class="dispatch-summary-label">Quota Remaining</span>
+                  <strong class="dispatch-summary-value" id="sendSummaryQuota">800 / 800</strong>
+                </div>
+              </div>
+
+              <div class="send-warning-box">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <div>
+                  <strong>Mandatory Compliance Notice</strong>
+                  <p>Messages will ONLY be dispatched to contacts who have explicitly opted in. Previously contacted numbers in this calendar month will be skipped to protect your quota.</p>
+                </div>
+              </div>
+
+              <div class="send-action-wrap">
+                <button type="button" class="btn btn-success btn-lg" id="btnSendCampaign">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  <span>Dispatch Campaign Now</span>
+                </button>
+              </div>
+
+              <!-- Dispatch Execution Results -->
+              <div id="resultsCard" class="dispatch-results-container" style="display: none;">
+                <h3 class="results-heading">Execution Summary</h3>
+                <div id="resultsAlert" class="alert"></div>
+
+                <div id="failedSection" class="failed-details-container" style="display: none;">
+                  <h4 class="failed-heading">Failed Transmissions & Meta Errors</h4>
+                  <div class="table-container" style="max-height: 240px;">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Phone Number</th>
+                          <th>Meta Error Code / Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody id="failedTableBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SECTION 3: CONTACTS & ACTIVITY            -->
+      <!-- ========================================== -->
+      <section id="contacts-view" class="view-panel">
+        <div class="section-header-row">
+          <div>
+            <h1 class="page-title">Contacts & Activity</h1>
+            <p class="page-subtitle">Manage audience consent, import/export CSV lists, and monitor live delivery events</p>
+          </div>
+
+          <!-- Internal Sub-navigation Tabs -->
+          <div class="subnav-pills" role="tablist" aria-label="Contacts Sections">
+            <button type="button" class="subnav-pill active" data-subtab="cont-recipients-tab">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Recipients List</span>
+            </button>
+            <button type="button" class="subnav-pill" data-subtab="cont-activity-tab">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>Live Delivery Log</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SUBTAB 1: RECIPIENTS -->
+        <div id="cont-recipients-tab" class="subtab-panel active">
+          <!-- Stat Chips Bar -->
+          <div class="contacts-stat-row">
+            <div class="stat-chip">
+              <span class="chip-label">Total in List</span>
+              <strong class="chip-count" id="totalRecipientsCount">0</strong>
+            </div>
+            <div class="stat-chip chip-success">
+              <span class="chip-label">Opted In (Eligible)</span>
+              <strong class="chip-count" id="optedInCount">0</strong>
+            </div>
+            <div class="stat-chip chip-neutral">
+              <span class="chip-label">Opted Out (Skipped)</span>
+              <strong class="chip-count" id="optedOutCount">0</strong>
+            </div>
+          </div>
+
+          <!-- Recipients Actions Toolbar -->
+          <div class="card toolbar-card">
+            <div class="recipients-toolbar">
+              <!-- Search Contacts -->
+              <div class="search-input-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchRecipientsInput" placeholder="Filter by phone number..." class="search-input">
+              </div>
+
+              <!-- Filter Pills (All / Opted-In / Opted-Out) -->
+              <div class="filter-pills-group" role="group" aria-label="Filter recipients">
+                <button type="button" class="filter-pill active" data-recipient-filter="all">All</button>
+                <button type="button" class="filter-pill" data-recipient-filter="opted-in">Opted In</button>
+                <button type="button" class="filter-pill" data-recipient-filter="opted-out">Opted Out</button>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="recipients-btn-actions">
+                <!-- All Opted In Toggle Switch -->
+                <button type="button" class="btn btn-secondary btn-sm" id="toggleAllRecipients" role="switch" aria-checked="false" disabled>
+                  <span class="switch-knob-inline"></span>
+                  <span id="allRecipientsOptedInCount">Toggle All</span>
+                </button>
+
+                <!-- Export CSV -->
+                <button type="button" class="btn btn-secondary btn-sm" id="btnExportCsv">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Export CSV</span>
+                </button>
+
+                <!-- Upload CSV -->
+                <button type="button" class="btn btn-secondary btn-sm" id="btnUploadCsv">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <span>Upload & Replace CSV</span>
+                </button>
+                <input type="file" id="recipientsCsvFile" accept=".csv" style="display: none;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Add Contacts Manually Box (Clean Accordion / Card) -->
+          <div class="card manual-add-card">
+            <details class="manual-add-details">
+              <summary class="manual-add-summary">
+                <div class="summary-left">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                  <span class="font-medium">Add Phone Numbers Manually</span>
+                </div>
+                <span class="summary-hint">Click to expand</span>
+              </summary>
+              <div class="manual-add-body">
+                <div class="form-group">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="manualRecipientsOptedIn">
+                    <span class="checkbox-checkmark"></span>
+                    <span class="checkbox-text">I confirm these recipients have explicitly agreed to receive WhatsApp communications.</span>
+                  </label>
+                </div>
+
+                <div class="form-group">
+                  <label for="manualRecipientNumbers" class="form-label">Phone Numbers (10 to 15 digits with country code)</label>
+                  <textarea id="manualRecipientNumbers" class="form-control" rows="3" placeholder="+15551234567&#10;+919876543210"></textarea>
+                  <span class="form-help">Separate multiple numbers with commas, spaces, or newlines. Must include country code.</span>
+                </div>
+
+                <button type="button" class="btn btn-primary btn-sm" id="btnAddRecipients">
+                  Add to Recipients List
+                </button>
+                <div id="recipientInputFeedback" class="recipient-input-feedback" role="status" aria-live="polite" style="display: none;"></div>
+              </div>
+            </details>
+          </div>
+
+          <!-- Recipients Table Card -->
+          <div class="card table-card">
+            <div class="table-container">
+              <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Phone</th>
-                    <th>Error Reason</th>
+                    <th style="width: 60px;">#</th>
+                    <th>Phone Number</th>
+                    <th>Consent Status</th>
+                    <th style="width: 120px; text-align: right;">Opt-in Toggle</th>
                   </tr>
                 </thead>
-                <tbody id="failedTableBody"></tbody>
+                <tbody id="recipientsTableBody">
+                  <tr><td colspan="4" class="table-empty">Loading recipients list...</td></tr>
+                </tbody>
               </table>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <div id="logs-tab" class="tab-content">
-      <div class="card">
-        <h2 class="card-title">Database Sync</h2>
-        <div class="log-db-actions">
-          <a class="btn btn-secondary" href="/api/database/download">Download DB</a>
-          <button type="button" class="btn btn-secondary" id="btnImportDb">Import DB</button>
-          <input type="file" id="importDbFile" accept=".db,application/x-sqlite3" hidden>
+        <!-- SUBTAB 2: LIVE ACTIVITY LOG -->
+        <div id="cont-activity-tab" class="subtab-panel">
+          <div class="card">
+            <div class="card-header-clean">
+              <div class="card-header-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <h2>Live Delivery & Auto-Reply Stream</h2>
+              </div>
+              <div class="activity-header-controls">
+                <span class="stream-live-tag">
+                  <span class="pulse-dot"></span>
+                  <span>Streaming</span>
+                </span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnClearLogView">Clear view</button>
+              </div>
+            </div>
+
+            <div class="card-body-clean">
+              <!-- Filter Toolbar -->
+              <div class="activity-filters-row">
+                <div class="filter-pills-group" role="group" aria-label="Filter log entries">
+                  <button type="button" class="filter-pill active" data-log-filter="all">All</button>
+                  <button type="button" class="filter-pill" data-log-filter="sent">Sent</button>
+                  <button type="button" class="filter-pill" data-log-filter="failed">Failed</button>
+                  <button type="button" class="filter-pill" data-log-filter="skipped">Skipped</button>
+                </div>
+
+                <div class="search-input-wrap">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input type="text" id="searchLogInput" placeholder="Filter log by phone or details..." class="search-input">
+                </div>
+              </div>
+
+              <!-- Stream List -->
+              <div id="liveLogList" class="live-log-list" aria-live="polite">
+                <p class="help-text">Loading recent activity...</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <p class="help-text" id="dbSyncStatus" aria-live="polite"></p>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Mobile Bottom Navigation (Visible on mobile screens) -->
+  <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+    <button type="button" class="mobile-nav-item active" data-view="dashboard-view">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect width="7" height="9" x="3" y="3" rx="1"/>
+        <rect width="7" height="5" x="14" y="3" rx="1"/>
+        <rect width="7" height="9" x="14" y="12" rx="1"/>
+        <rect width="7" height="5" x="3" y="16" rx="1"/>
+      </svg>
+      <span>Dashboard</span>
+    </button>
+
+    <button type="button" class="mobile-nav-item" data-view="messaging-view">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/>
+      </svg>
+      <span>Messaging</span>
+    </button>
+
+    <button type="button" class="mobile-nav-item" data-view="contacts-view">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      <span>Contacts</span>
+    </button>
+  </nav>
+
+  <!-- ========================================== -->
+  <!-- MODAL: SETTINGS & WEBHOOK                 -->
+  <!-- ========================================== -->
+  <div class="modal-overlay" id="settingsModal" aria-hidden="true" role="dialog" aria-labelledby="settingsModalTitle">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <h2 id="settingsModalTitle">Settings & Configuration</h2>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseSettings" aria-label="Close Settings">✕</button>
       </div>
-      <div class="card live-log-card">
-        <div class="live-log-heading">
-          <h2 class="card-title">Live Log</h2>
-          <button type="button" class="btn btn-secondary btn-sm" id="btnClearLogView">Clear view</button>
+
+      <div class="modal-body">
+        <!-- Section A: Webhook Setup -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span>Meta WhatsApp Webhook Configuration</span>
+          </h3>
+
+          <div id="webhookLocalWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem;">
+            Meta cannot reach localhost URLs. Configure a public domain or tunnel (ngrok / cloudflare) in <code>PUBLIC_BASE_URL</code>.
+          </div>
+
+          <!-- Callback URL Field -->
+          <div class="form-group">
+            <label for="webhookCallbackUrl" class="form-label">Callback URL</label>
+            <div class="copy-input-row">
+              <input id="webhookCallbackUrl" type="text" class="form-control" readonly>
+              <button type="button" class="btn btn-secondary webhook-copy" data-copy-target="webhookCallbackUrl">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Verify Token Field -->
+          <div class="form-group">
+            <label for="webhookVerifyToken" class="form-label">Verify Token</label>
+            <div class="copy-input-row">
+              <input id="webhookVerifyToken" type="password" class="form-control" readonly>
+              <button type="button" class="btn btn-secondary btn-icon-only" id="btnToggleTokenVisibility" title="Toggle visibility">
+                <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button type="button" class="btn btn-secondary webhook-copy" data-copy-target="webhookVerifyToken">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-instructions">
+            <span class="font-medium text-charcoal">Quick Meta Setup Steps:</span>
+            <ol class="setup-steps-list">
+              <li>Log in to <a href="https://developers.facebook.com" target="_blank" rel="noopener">Meta Developer Dashboard</a> &gt; Your WhatsApp App &gt; Configuration &gt; Webhook &gt; Edit.</li>
+              <li>Paste the Callback URL and Verify Token above, then click <strong>Verify and save</strong>.</li>
+              <li>Under Webhook fields, click <strong>Manage</strong> and subscribe to <code>messages</code>.</li>
+            </ol>
+          </div>
+          <p id="webhookSetupError" class="help-text" style="display: none; color: var(--danger);"></p>
         </div>
-        <div class="log-filters" role="group" aria-label="Filter log entries">
-          <button type="button" class="active" data-log-filter="all">All</button>
-          <button type="button" data-log-filter="sent">Sent</button>
-          <button type="button" data-log-filter="failed">Failed</button>
-          <button type="button" data-log-filter="skipped">Skipped</button>
+
+        <!-- Section B: Database Backup & Restore -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+            <span>Database Backup & Restore</span>
+          </h3>
+          <p class="form-help" style="margin-bottom: 0.75rem;">Download or restore the SQLite outreach database (including sent records and delivery logs).</p>
+
+          <div class="db-sync-actions">
+            <a class="btn btn-secondary" href="/api/database/download" id="btnDownloadDb">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Download DB Backup</span>
+            </a>
+            <button type="button" class="btn btn-secondary" id="btnImportDb">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Import DB File</span>
+            </button>
+            <input type="file" id="importDbFile" accept=".db,application/x-sqlite3" style="display: none;">
+          </div>
+          <p class="help-text" id="dbSyncStatus" aria-live="polite" style="margin-top: 0.5rem;"></p>
         </div>
-        <div id="liveLogList" class="live-log-list" aria-live="polite"><p class="help-text">Open this screen to load recent activity.</p></div>
+
+        <!-- Section C: Application Info -->
+        <div class="settings-section" style="border-bottom: none; margin-bottom: 0;">
+          <h3 class="settings-section-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Platform Information</span>
+          </h3>
+          <div class="platform-info-grid">
+            <div><span>Service:</span> <strong>MatchDistrict WhatsApp Outreach</strong></div>
+            <div><span>API Engine:</span> <strong>Meta Cloud API v21.0</strong></div>
+            <div><span>Monthly Limit:</span> <strong>800 Free-Tier Unique Users</strong></div>
+            <div><span>Storage:</span> <strong>SQLite 3 (WAL Mode)</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnDoneSettings">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- Confirmation Modal -->
-  <div class="modal-overlay" id="confirmModal">
-    <div class="modal">
-      <h3 class="modal-title">Confirm Campaign Send</h3>
-      <p id="modalPromptText" style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1rem;">
-        Are you sure you want to send this template campaign?
-      </p>
-      <div class="modal-actions">
+  <!-- ========================================== -->
+  <!-- MODAL: CONFIRM CAMPAIGN DISPATCH          -->
+  <!-- ========================================== -->
+  <div class="modal-overlay" id="confirmModal" aria-hidden="true" role="dialog" aria-labelledby="confirmModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="confirmModalTitle">Confirm Campaign Dispatch</h3>
+        <button type="button" class="btn-close-modal" id="btnModalCloseX" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="modalPromptText" class="modal-prompt-text">
+          Are you sure you want to dispatch this campaign?
+        </p>
+      </div>
+      <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="btnModalCancel">Cancel</button>
         <button type="button" class="btn btn-success" id="btnModalConfirm">Yes, Dispatch Now</button>
       </div>
     </div>
   </div>
 
+  <!-- ========================================== -->
+  <!-- MODAL: CONFIRM CSV REPLACE                 -->
+  <!-- ========================================== -->
+  <div class="modal-overlay" id="confirmCsvModal" aria-hidden="true" role="dialog">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Replace Recipients List?</h3>
+        <button type="button" class="btn-close-modal" id="btnCsvModalCloseX" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-prompt-text">
+          Uploading a new CSV file will completely replace the current recipients list. This action cannot be undone. Are you sure you want to proceed?
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCsvModalCancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnCsvModalConfirm">Replace CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
   <script src="/js/app.js"></script>
 </body>
 </html>
-

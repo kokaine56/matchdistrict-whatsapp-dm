@@ -484,6 +484,21 @@ app.post('/api/upload-recipients', requireAuth, uploadCsv.single('file'), async 
   }
 });
 
+// Download / Export Recipients CSV
+app.get('/api/recipients/export', requireAuth, (req, res) => {
+  try {
+    if (fs.existsSync(CSV_FILE)) {
+      res.download(CSV_FILE, 'recipients.csv');
+    } else {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="recipients.csv"');
+      res.send('phone,opted_in\n');
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Upload Public Header or Reply Image
 app.post('/api/upload-image', requireAuth, uploadImage.single('image'), (req, res) => {
   if (!req.file) {
