@@ -447,6 +447,9 @@ textarea {
   display: block;
 }
 
+.preview-document { display:block; padding:1.25rem; margin-bottom:.5rem; background:rgba(255,255,255,.08); color:#53bdeb; text-align:center; border-radius:6px; }
+.preview-footer { margin-top:.35rem; color:rgba(255,255,255,.58); font-size:.78rem; }
+
 .preview-body {
   white-space: pre-wrap;
   word-break: break-word;
@@ -797,6 +800,7 @@ th {
   .all-recipients-toggle { top:calc(8rem + env(safe-area-inset-top)); min-height:56px; }
   .grid-2 { grid-template-columns:minmax(0,1fr); gap:.75rem; }
   .preview-panel { order:2; }
+  .preview-panel { display:block; }
   .preview-panel:not([open]) .preview-container { display:none; }
   .preview-container { min-height:250px; padding:.75rem; }
   input[type="text"], input[type="url"], input[type="password"], input[type="file"], textarea, select { font-size:16px; min-height:44px; padding:.65rem .75rem; }

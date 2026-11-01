@@ -291,8 +291,30 @@ app.get('/api/message-template-definition', requireAuth, async (req, res) => {
     const name = String(req.query.name || '');
     const language = String(req.query.language || '');
     if (!name) return res.status(400).json({ error: 'Template name is required.' });
-    res.json({ template: await getMessageTemplateDefinition(name, language) });
+    const template = await getMessageTemplateDefinition(name, language);
+    const header = template.components?.find(component => component.type === 'HEADER');
+    let sampleHeader = null;
+    const sampleUrl = header?.format !== 'TEXT' ? header?.example?.header_handle?.[0] : null;
+    if (sampleUrl && /^https:\/\//i.test(sampleUrl)) {
+      try {
+        const mediaResponse = await fetch(sampleUrl);
+        if (mediaResponse.ok) {
+          const ext = header.format === 'IMAGE' ? '.jpg' : header.format === 'VIDEO' ? '.mp4' : '.pdf';
+          const fileName = `template_${Buffer.from(name).toString('hex').slice(0, 24)}${ext}`;
+          await fs.promises.writeFile(path.join(UPLOADS_DIR, fileName), Buffer.from(await mediaResponse.arrayBuffer()));
+          const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+          sampleHeader = { fileName, url: `${base.replace(/\/$/, '')}/uploads/${fileName}` };
+        }
+      } catch (error) { console.warn('[Template sample download]', error.message); }
+    }
+    res.json({ template, sampleHeader });
   } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+app.post('/api/upload-template-media', requireAuth, uploadImage.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No media file uploaded.' });
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  res.json({ status: 'ok', fileName: req.file.filename, url: `${base.replace(/\/$/, '')}/uploads/${req.file.filename}` });
 });
 
 app.get('/api/config', requireAuth, async (req, res) => {

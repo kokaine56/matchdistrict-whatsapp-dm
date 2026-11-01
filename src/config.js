@@ -14,7 +14,8 @@ const DEFAULT_CONFIG = {
     headerImageUrl: '',
     bodyVariables: [],
     urlButtonValue: '',
-    quickReplyPayloads: []
+    quickReplyPayloads: [],
+    headers: {}
   },
   autoReply: {
     type: 'text',

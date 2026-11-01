@@ -1,4 +1,24 @@
 const GRAPH_API_VERSION = 'v21.0';
+const templateMediaIds = new Map();
+
+async function uploadTemplateMedia(filePath, templateName, format, preferredMime = '') {
+  const fileInfo = await (await import('node:fs/promises')).stat(filePath);
+  const signature = `${filePath}:${fileInfo.size}:${fileInfo.mtimeMs}`;
+  if (templateMediaIds.get(templateName)?.signature === signature) return templateMediaIds.get(templateName).id;
+  const accessToken = process.env.ACCESS_TOKEN;
+  const phoneNumberId = process.env.PHONE_NUMBER_ID;
+  if (!accessToken || !phoneNumberId) throw new Error('ACCESS_TOKEN and PHONE_NUMBER_ID must be set in environment variables');
+  const mime = preferredMime || (format === 'IMAGE' ? 'image/jpeg' : format === 'VIDEO' ? 'video/mp4' : 'application/pdf');
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('type', mime);
+  form.append('file', new Blob([await (await import('node:fs/promises')).readFile(filePath)], { type: mime }), `${templateName}${format === 'IMAGE' ? '.jpg' : format === 'VIDEO' ? '.mp4' : '.pdf'}`);
+  const response = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/media`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw metaError(data, response);
+  templateMediaIds.set(templateName, { signature, id: data.id });
+  return data.id;
+}
 
 export async function getApprovedMessageTemplates() {
   const accessToken = process.env.ACCESS_TOKEN;
@@ -107,6 +127,7 @@ export async function sendTemplateMessage({
   urlButtonValues = {},
   quickReplyPayloads = [],
   templateDefinition
+  ,headerChoice = null
 }) {
   if (typeof templateName !== 'string' || !templateName || typeof languageCode !== 'string' || !languageCode) {
     throw new Error('An exact Meta template name and language code are required.');
@@ -121,9 +142,20 @@ export async function sendTemplateMessage({
   if (header && (headerFormat !== 'TEXT' || headerVars.length)) {
     if (headerFormat === 'TEXT') components.push({ type: 'header', parameters: [{ type: 'text', text: clean(headerText) }] });
     else {
-      const mediaUrl = clean(headerImageUrl);
-      if (!/^https:\/\//i.test(mediaUrl)) throw new Error('Header media must use a public HTTPS URL.');
-      components.push({ type: 'header', parameters: [{ type: headerFormat.toLowerCase(), [headerFormat.toLowerCase()]: { link: mediaUrl } }] });
+      const mediaUrl = clean(headerChoice?.url || headerImageUrl);
+      const filePath = headerChoice?.fileName ? headerChoice.filePath : '';
+      if (filePath) {
+        try {
+          const mediaId = await uploadTemplateMedia(filePath, templateName, headerFormat, headerChoice.mimeType);
+          components.push({ type: 'header', parameters: [{ type: headerFormat.toLowerCase(), [headerFormat.toLowerCase()]: { id: mediaId } }] });
+        } catch (uploadError) {
+          if (!/^https:\/\//i.test(mediaUrl)) throw uploadError;
+          components.push({ type: 'header', parameters: [{ type: headerFormat.toLowerCase(), [headerFormat.toLowerCase()]: { link: mediaUrl } }] });
+        }
+      } else {
+        if (!/^https:\/\//i.test(mediaUrl)) throw new Error('Choose a template sample, upload a file, or enter a public HTTPS media URL.');
+        components.push({ type: 'header', parameters: [{ type: headerFormat.toLowerCase(), [headerFormat.toLowerCase()]: { link: mediaUrl } }] });
+      }
     }
   }
   const body = definitions.find(c => c.type === 'BODY');
@@ -153,7 +185,20 @@ export async function sendTemplateMessage({
     }
   };
 
-  return callMetaGraphApi(payload);
+  try { return await callMetaGraphApi(payload); }
+  catch (err) {
+    if (header && headerFormat !== 'TEXT' && headerChoice?.fileName && isMediaSendError(err)) {
+      templateMediaIds.delete(templateName);
+      const refreshedId = await uploadTemplateMedia(headerChoice.filePath, templateName, headerFormat, headerChoice.mimeType);
+      payload.template.components.find(component => component.type === 'header').parameters[0][headerFormat.toLowerCase()] = { id: refreshedId };
+      return callMetaGraphApi(payload);
+    }
+    throw err;
+  }
+}
+
+function isMediaSendError(err) {
+  return [131051, 131052, 131053, 131054, 131055, 131056, 131057].includes(Number(err.metaCode)) || /media/i.test(`${err.message} ${err.errorDataDetails || ''}`);
 }
 
 /**

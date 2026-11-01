@@ -1,10 +1,4 @@
 // Template Body presets for live preview simulation
-const TEMPLATE_PREVIEWS = {
-  'hello': 'Hello {{1}}! Welcome to {{2}}. We are thrilled to connect with you.',
-  'hi': 'Hi {{1}}! Quick check-in from {{2}}. How can we help you today?',
-  'ek_kam_hai': 'Ek kaam hai aapse regarding {{1}}. Please reply whenever you are free!'
-};
-
 let currentConfig = null;
 let currentStats = null;
 let currentRecipients = null;
@@ -28,8 +22,9 @@ const languageCodeInput = document.getElementById('languageCode');
 const campaignForm = document.getElementById('campaignForm');
 
 // Preview Elements
-const previewImg = document.getElementById('previewImg');
+const previewHeader = document.getElementById('previewHeader');
 const previewText = document.getElementById('previewText');
+const previewFooter = document.getElementById('previewFooter');
 const previewActions = document.getElementById('previewActions');
 
 // Auto-Reply Elements
@@ -78,9 +73,7 @@ tabBtns.forEach(btn => {
     btn.classList.add('active');
     const target = document.getElementById(btn.dataset.tab);
     if (target) target.classList.add('active');
-    if (target?.id === 'campaign-tab' && window.matchMedia('(max-width: 700px)').matches) {
-      document.querySelector('.preview-panel')?.removeAttribute('open');
-    }
+    if (target?.id === 'campaign-tab' && window.matchMedia('(max-width: 700px)').matches) document.querySelector('.preview-panel')?.setAttribute('open', '');
   });
 });
 
@@ -367,6 +360,13 @@ async function loadTemplateDefinition(saved = {}) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Could not load template definition');
   selectedDefinition = data.template;
+  const priorHeader = saved.headers?.[tpl.name] || {};
+  const header = selectedDefinition.components?.find(c => c.type === 'HEADER');
+  if (header && header.format !== 'TEXT') {
+    const sample = data.sampleHeader;
+    selectedDefinition.sampleHeader = sample;
+    selectedDefinition.headerChoice = priorHeader.mode ? priorHeader : sample ? { mode: 'sample', ...sample } : { mode: 'upload' };
+  }
   const components = selectedDefinition.components || [];
   const addField = (label, key, value = '', type = 'text', required = true) => {
     const wrap = document.createElement('div'); wrap.className = 'form-group';
@@ -374,10 +374,32 @@ async function loadTemplateDefinition(saved = {}) {
     const input = document.createElement('input'); input.type = type; input.dataset.campaignKey = key; input.value = value || ''; input.required = required;
     wrap.append(lab, input); templateFields.append(wrap); return input;
   };
-  const header = components.find(c => c.type === 'HEADER');
   const headerVars = (header?.text || '').match(/\{\{[^}]+\}\}/g) || [];
-  if (header && header.format !== 'TEXT') addField(`${header.format} header public HTTPS URL`, 'headerImageUrl', saved.headerImageUrl, 'url');
-  if (headerVars.length) addField('Header text', 'headerText', saved.headerText);
+  if (header && header.format !== 'TEXT') {
+    const wrap = document.createElement('div'); wrap.className = 'form-group';
+    const label = document.createElement('label'); label.textContent = 'Header media'; wrap.append(label);
+    const select = document.createElement('select'); select.dataset.campaignKey = 'headerMode';
+    const options = [ ...(data.sampleHeader ? [['sample', "Use template's sample image"]] : []), ['upload', 'Upload a different image'], ['url', 'Paste a URL'] ];
+    options.forEach(([value, text]) => select.append(new Option(text, value)));
+    select.value = selectedDefinition.headerChoice.mode || 'upload'; wrap.append(select);
+    const upload = document.createElement('input'); upload.type = 'file'; upload.accept = header.format === 'IMAGE' ? 'image/*' : header.format === 'VIDEO' ? 'video/*' : '.pdf,application/pdf'; upload.dataset.headerUpload = 'true';
+    const urlInput = document.createElement('input'); urlInput.type = 'url'; urlInput.placeholder = 'https://example.com/header'; urlInput.dataset.campaignKey = 'headerUrl'; urlInput.value = selectedDefinition.headerChoice.mode === 'url' ? selectedDefinition.headerChoice.url || '' : '';
+    const showChoice = () => { upload.style.display = select.value === 'upload' ? 'block' : 'none'; urlInput.style.display = select.value === 'url' ? 'block' : 'none'; };
+    select.addEventListener('change', () => { selectedDefinition.headerChoice = select.value === 'sample' ? { mode: 'sample', ...data.sampleHeader } : select.value === 'url' ? { mode: 'url', url: urlInput.value } : { mode: 'upload' }; showChoice(); updateLivePreview(); });
+    upload.addEventListener('change', async () => {
+      const file = upload.files?.[0]; if (!file) return;
+      const form = new FormData(); form.append('image', file);
+      try {
+        const result = await fetch('/api/upload-template-media', { method: 'POST', body: form }); const savedFile = await result.json();
+        if (!result.ok) throw new Error(savedFile.error || 'Could not upload header media');
+        selectedDefinition.headerChoice = { mode: 'upload', fileName: savedFile.fileName, url: savedFile.url, mimeType: file.type };
+        updateLivePreview(); showAlert('Template header media uploaded. Save campaign settings to remember it.');
+      } catch (err) { showAlert(err.message, 'danger'); }
+    });
+    urlInput.addEventListener('input', () => { selectedDefinition.headerChoice = { mode: 'url', url: urlInput.value }; updateLivePreview(); });
+    wrap.append(upload, urlInput); templateFields.append(wrap); showChoice();
+  }
+  if (headerVars.length) addField(`Header text ${headerVars[0]}`, 'headerText', saved.headerText);
   const body = components.find(c => c.type === 'BODY');
   const vars = (body?.text || '').match(/\{\{[^}]+\}\}/g) || [];
   vars.forEach((token, i) => addField(`Body ${token}`, `body-${i}`, saved.bodyVariables?.[i]));
@@ -390,43 +412,33 @@ async function loadTemplateDefinition(saved = {}) {
 
 // --- LIVE PREVIEW ---
 function updateLivePreview() {
-  const selectedTpl = selectedTemplate();
-  let rawBody = TEMPLATE_PREVIEWS[selectedTpl?.name] || 'Hello! Thank you for contacting us.';
-
-  // Substitute variables
-  const varInputs = Array.from(templateFields.querySelectorAll('[data-campaign-key^="body-"]'));
-  varInputs.forEach((inp, i) => {
-    const val = inp.value.trim() || `[Variable {{${i + 1}}}]`;
-    rawBody = rawBody.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
+  const components = selectedDefinition?.components || [];
+  const val = key => cleanCampaignValue(templateFields.querySelector(`[data-campaign-key="${key}"]`)?.value || '');
+  const header = components.find(c => c.type === 'HEADER');
+  previewHeader.replaceChildren();
+  if (header?.format === 'TEXT') previewHeader.textContent = (header.text || '').replace(/\{\{[^}]+\}\}/g, token => val('headerText') || token);
+  else if (header && selectedDefinition?.headerChoice?.url) {
+    const media = header.format === 'IMAGE' ? document.createElement('img') : header.format === 'VIDEO' ? document.createElement('video') : document.createElement('a');
+    media.src = selectedDefinition.headerChoice.url;
+    if (media.tagName === 'VIDEO') { media.controls = true; media.className = 'preview-header-img'; }
+    else if (media.tagName === 'IMG') { media.alt = 'Template header'; media.className = 'preview-header-img'; }
+    else { media.href = selectedDefinition.headerChoice.url; media.textContent = '📄 Template document'; media.className = 'preview-document'; }
+    previewHeader.append(media);
+  }
+  const body = components.find(c => c.type === 'BODY');
+  previewText.textContent = (body?.text || '').replace(/\{\{([^}]+)\}\}/g, (token, name, offset, source) => {
+    const tokens = [...source.matchAll(/\{\{([^}]+)\}\}/g)]; const index = tokens.findIndex(match => match.index === offset);
+    return val(`body-${index}`) || token;
   });
-
-  previewText.textContent = rawBody;
-
-  // Header Image
-  const imgUrl = templateFields.querySelector('[data-campaign-key="headerImageUrl"]')?.value.trim() || '';
-  if (imgUrl) {
-    previewImg.src = imgUrl;
-    previewImg.style.display = 'block';
-  } else {
-    previewImg.style.display = 'none';
-  }
-
-  // Action Buttons
-  previewActions.innerHTML = '';
-  const urlVal = templateFields.querySelector('[data-campaign-key^="url-"]')?.value.trim() || '';
-  if (urlVal) {
-    const btn = document.createElement('div');
-    btn.className = 'preview-btn';
-    btn.innerHTML = `🔗 Open Link (${urlVal})`;
-    previewActions.appendChild(btn);
-  }
-
-  templateFields.querySelectorAll('[data-campaign-key^="quick-"]').forEach(input => {
-    if (!input.value.trim()) return;
-    const btn = document.createElement('div');
-    btn.className = 'preview-btn';
-    btn.innerHTML = `↩ ${input.value.trim()}`;
-    previewActions.appendChild(btn);
+  previewFooter.textContent = components.find(c => c.type === 'FOOTER')?.text || '';
+  previewActions.replaceChildren();
+  (components.find(c => c.type === 'BUTTONS')?.buttons || []).forEach(button => {
+    const el = document.createElement('div'); el.className = 'preview-btn';
+    if (button.type === 'QUICK_REPLY') el.textContent = `↩ ${button.text}`;
+    else if (button.type === 'URL') el.textContent = `🔗 ${button.text || 'Open link'} · ${String(button.url || '').replace(/\{\{1\}\}/g, val(`url-${button.index}`) || '{{1}}')}`;
+    else if (button.type === 'PHONE_NUMBER') el.textContent = `☎ ${button.text || 'Call'} · ${button.phone_number || ''}`;
+    else return;
+    previewActions.append(el);
   });
 }
 
@@ -555,7 +567,12 @@ function getCampaignFormSettings() {
   const values = Object.fromEntries(Array.from(templateFields.querySelectorAll('[data-campaign-key]'), el => [el.dataset.campaignKey, cleanCampaignValue(el.value)]));
   const requiredEmpty = Array.from(templateFields.querySelectorAll('[required]')).find(el => !values[el.dataset.campaignKey]);
   if (requiredEmpty) { requiredEmpty.focus(); throw new Error('Please fill in every required template value.'); }
-  if (values.headerImageUrl && !/^https:\/\//i.test(values.headerImageUrl)) throw new Error('Header media must use a public HTTPS URL.');
+  const headerDefinition = selectedDefinition.components.find(c => c.type === 'HEADER');
+  if (headerDefinition && headerDefinition.format !== 'TEXT') {
+    const choice = selectedDefinition.headerChoice;
+    if (!choice?.fileName && !choice?.url) throw new Error('Choose a template sample, upload a header file, or paste a public HTTPS URL.');
+    if (choice.mode === 'url' && !/^https:\/\//i.test(choice.url || '')) throw new Error('Header media must use a public HTTPS URL.');
+  }
   const bodyVariables = (selectedDefinition.components.find(c => c.type === 'BODY')?.text || '').match(/\{\{[^}]+\}\}/g) || [];
   const urlButtonValues = {};
   const quickReplyPayloads = {};
@@ -563,12 +580,14 @@ function getCampaignFormSettings() {
     if (button.type === 'URL' && /\{\{1\}\}/.test(button.url || '')) urlButtonValues[String(button.index)] = values[`url-${button.index}`];
     if (button.type === 'QUICK_REPLY') quickReplyPayloads[String(button.index)] = values[`quick-${button.index}`];
   }
+  const headers = { ...(currentConfig?.campaign?.headers || {}) };
+  if (headerDefinition && headerDefinition.format !== 'TEXT') headers[template.name] = { ...selectedDefinition.headerChoice, format: headerDefinition.format };
   return {
     template: template.name,
     languageCode: template.language,
     headerImageUrl: values.headerImageUrl || '', headerText: values.headerText || '',
     bodyVariables: bodyVariables.map((_, i) => values[`body-${i}`]),
-    urlButtonValues, quickReplyPayloads
+    urlButtonValues, quickReplyPayloads, headers
   };
 }
 

@@ -236,7 +236,13 @@ export async function runCampaign(overrideCampaignConfig = null) {
         quickReplyPayloads: campaignSettings.quickReplyPayloads,
         urlButtonValues: campaignSettings.urlButtonValues,
         headerText: campaignSettings.headerText,
-        templateDefinition
+        templateDefinition,
+        headerChoice: (() => {
+          const choice = campaignSettings.headers?.[templateName];
+          if (!choice?.fileName) return choice;
+          const fileName = path.basename(choice.fileName);
+          return { ...choice, fileName, filePath: path.resolve(__dirname, '../uploads', fileName) };
+        })()
       });
 
       // Successful send - record in month tracking
