@@ -15,10 +15,10 @@ import {
   COOKIE_NAME
 } from './auth.js';
 import { loadConfig, saveConfig } from './config.js';
-import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, CSV_FILE } from './campaign.js';
-import { getCurrentMonthKey, getMonthSentCount } from './tracker.js';
-import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents } from './database.js';
-import { getApprovedMessageTemplates, getMessageTemplateDefinition, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
+import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, readRecipientsFromCsv, CSV_FILE } from './campaign.js';
+import { getCurrentMonthKey, getMonthSentCount, isAlreadySentThisMonth, normalizePhone, recordSuccessfulSend, recordFailedSend } from './tracker.js';
+import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents, recordOutboundMessage } from './database.js';
+import { getApprovedMessageTemplates, getAllMessageTemplates, getMessageTemplateDefinition, createMessageTemplate, sendTemplateMessage, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -101,6 +101,10 @@ function markEventProcessed(id) {
   return true;
 }
 
+function fullSendError(err) {
+  return `Meta error ${err.metaCode ?? 'unknown'}: ${err.message}${err.errorDataDetails ? `\nerror_data.details: ${err.errorDataDetails}` : ''}\nJSON payload sent: ${JSON.stringify(err.payload || {})}`;
+}
+
 function hasValidMetaSignature(req) {
   const secret = process.env.META_APP_SECRET;
   const signature = req.get('x-hub-signature-256');
@@ -137,6 +141,13 @@ app.post('/webhook', (req, res) => {
           if (!markEventProcessed(eventId)) continue;
           // Log only provider message ID and state; recipient data and credentials stay private.
           console.log(`[Webhook Status] message=${String(status.id || '').slice(0, 80)} status=${String(status.status || 'unknown').slice(0, 20)}`);
+          const statusName = String(status.status || 'unknown');
+          const statusErrors = (status.errors || []).map(error => ({ code: error.code, message: error.title || error.message, details: error.error_data?.details })).filter(error => error.code || error.message || error.details);
+          const statusDetail = `Meta status ${statusName}${statusErrors.length ? ` · ${JSON.stringify(statusErrors)}` : ''}`;
+          db.prepare(`INSERT INTO message_statuses(message_id, phone, status, details, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(message_id) DO UPDATE SET status=excluded.status, details=excluded.details, updated_at=excluded.updated_at`).run(String(status.id || ''), String(status.recipient_id || ''), statusName, statusDetail, new Date().toISOString());
+          if (status.id) db.prepare('UPDATE outbound_messages SET status=?, failure_reason=? WHERE message_id=?').run(statusName, statusName === 'failed' ? statusDetail : null, String(status.id));
+          const matchedSend = status.id ? db.prepare('SELECT phone FROM sent_numbers WHERE message_id=?').get(String(status.id)) : null;
+          addLog({ phone: status.recipient_id || matchedSend?.phone || '', action: statusName === 'failed' ? 'failed' : 'sent', details: `${statusDetail} · message ID: ${status.id || 'unknown'}` });
           if (status.status === 'failed') {
             const codes = (status.errors || []).map(error => error.code).filter(Number.isFinite);
             console.warn(`[Webhook Status Failed] message=${String(status.id || '').slice(0, 80)} codes=${codes.join(',') || 'unspecified'}`);
@@ -180,14 +191,15 @@ app.post('/webhook', (req, res) => {
                 console.log('[Webhook] Configured button reply matched. Sending follow-up reply.');
                 try {
                   // Follow-up reply to button tap (does NOT count toward 800 cap)
-                  await sendTextMessage({
+                  const sendResult = await sendTextMessage({
                     to: senderPhone,
                     text: matchedBtn.reply
                   });
-                  addLog({ phone: senderPhone, action: 'reply_sent', details: `Reply sent: ${matchedBtn.reply}` });
+                  recordOutboundMessage({ phone: senderPhone, messageId: sendResult.messages[0].id, messageType: 'auto-reply button follow-up' });
+                  addLog({ phone: senderPhone, action: 'reply_sent', details: `Reply sent: ${matchedBtn.reply} · Meta message ID: ${sendResult.messages[0].id}` });
                   console.log('[Webhook] Follow-up reply sent.');
                 } catch (err) {
-                  addLog({ phone: senderPhone, action: 'failed', details: `Reply failed: ${err.message}` });
+                  addLog({ phone: senderPhone, action: 'failed', details: `Reply failed: ${fullSendError(err)}` });
                   console.error('[Webhook Button Reply Error] Could not send configured button reply.');
                 }
               }
@@ -198,14 +210,15 @@ app.post('/webhook', (req, res) => {
               console.log('[Webhook] Sending configured auto-reply.');
               try {
                 // Auto-reply to user response (does NOT count toward 800 cap)
-                await sendConfiguredAutoReply({
+                const sendResult = await sendConfiguredAutoReply({
                   to: senderPhone,
                   autoReplyConfig
                 });
-                addLog({ phone: senderPhone, action: 'reply_sent', details: 'Auto-reply sent' });
+                recordOutboundMessage({ phone: senderPhone, messageId: sendResult.messages[0].id, messageType: 'auto-reply' });
+                addLog({ phone: senderPhone, action: 'reply_sent', details: `Auto-reply sent · Meta message ID: ${sendResult.messages[0].id}` });
                 console.log('[Webhook] Auto-reply sent.');
               } catch (err) {
-                addLog({ phone: senderPhone, action: 'failed', details: `Auto-reply failed: ${err.message}` });
+                addLog({ phone: senderPhone, action: 'failed', details: `Auto-reply failed: ${fullSendError(err)}` });
                 console.error('[Webhook Auto-Reply Error] Could not send configured auto-reply.');
               }
             }
@@ -290,6 +303,88 @@ app.get('/api/message-templates', requireAuth, async (req, res) => {
     res.json({ templates: await getApprovedMessageTemplates() });
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/message-templates', requireAuth, async (req, res) => {
+  try { res.json({ templates: await getAllMessageTemplates() }); }
+  catch (err) { res.status(502).json({ error: err.message, metaCode: err.metaCode, errorDataDetails: err.errorDataDetails }); }
+});
+
+app.post('/api/admin/message-templates/refresh', requireAuth, async (req, res) => {
+  try { res.json({ templates: await getAllMessageTemplates() }); }
+  catch (err) { res.status(502).json({ error: err.message, metaCode: err.metaCode, errorDataDetails: err.errorDataDetails }); }
+});
+
+app.post('/api/admin/message-templates', requireAuth, uploadImage.single('headerImage'), async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const language = String(req.body.language || '').trim();
+    const category = String(req.body.category || '').toUpperCase();
+    const bodyText = String(req.body.body || '').trim();
+    if (!name || !language || !bodyText || !['MARKETING', 'UTILITY'].includes(category)) return res.status(400).json({ error: 'Name, language, body, and MARKETING or UTILITY category are required.' });
+    const components = [];
+    const headerType = req.body.headerType || 'none';
+    if (headerType === 'text') components.push({ type: 'HEADER', format: 'TEXT', text: String(req.body.headerText || '').trim() });
+    if (headerType === 'image') {
+      if (!req.file) return res.status(400).json({ error: 'Choose an image for the header.' });
+      components.push({ type: 'HEADER', format: 'IMAGE', example: { header_handle: [] } });
+    }
+    const sampleValues = JSON.parse(req.body.sampleValues || '[]');
+    const variables = [...bodyText.matchAll(/\{\{(\d+)\}\}/g)].map(match => Number(match[1]));
+    if (variables.length && (!Array.isArray(sampleValues) || variables.some(index => !String(sampleValues[index - 1] || '').trim()))) return res.status(400).json({ error: 'Provide a sample value for every body variable.' });
+    components.push({ type: 'BODY', text: bodyText, ...(variables.length ? { example: { body_text: [variables.map(index => String(sampleValues[index - 1]))] } } : {}) });
+    const footer = String(req.body.footer || '').trim();
+    if (footer) components.push({ type: 'FOOTER', text: footer });
+    const buttons = JSON.parse(req.body.buttons || '[]');
+    if (!Array.isArray(buttons) || buttons.length > 3 || (buttons.some(button => button.type !== 'QUICK_REPLY') && buttons.length > 1)) return res.status(400).json({ error: 'Use up to 3 quick replies, or exactly one URL or phone button.' });
+    if (buttons.some(button => !String(button.text || '').trim() || String(button.text).length > 20)) return res.status(400).json({ error: 'Button labels are required and must be 20 characters or fewer.' });
+    if (buttons.some(button => button.type === 'URL' && (!/^https:\/\//i.test(button.url || '') || button.url.length > 2000))) return res.status(400).json({ error: 'URL buttons require a valid HTTPS link.' });
+    if (buttons.some(button => button.type === 'PHONE_NUMBER' && !/^\+?\d{10,15}$/.test(String(button.phone_number || '').replace(/[\s-]/g, '')))) return res.status(400).json({ error: 'Phone buttons require a 10 to 15 digit number.' });
+    if (buttons.length) components.push({ type: 'BUTTONS', buttons });
+    const template = { name, language, category, components };
+    const result = await createMessageTemplate({ template, imagePath: req.file?.path, imageMime: req.file?.mimetype });
+    res.json({ template: result });
+  } catch (err) {
+    const details = `${err.message}${err.metaCode !== undefined ? ` · Meta code ${err.metaCode}` : ''}${err.errorDataDetails ? ` · ${err.errorDataDetails}` : ''}${err.payload ? ` · JSON payload: ${JSON.stringify(err.payload)}` : ''}`;
+    addLog({ action: 'failed', details: `Template creation failed: ${details}` });
+    res.status(502).json({ error: err.message, metaCode: err.metaCode, errorDataDetails: err.errorDataDetails, payload: err.payload });
+  }
+});
+
+app.post('/api/admin/send-one', requireAuth, async (req, res) => {
+  const phone = normalizePhone(req.body?.phone);
+  const monthlyLimit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
+  const monthKey = getCurrentMonthKey();
+  let payload;
+  try {
+    if (phone.length < 10 || phone.length > 15) return res.status(400).json({ error: 'Enter a 10 to 15 digit phone number with country code.' });
+    const recipient = (await readRecipientsFromCsv()).find(item => normalizePhone(item.phone) === phone);
+    if (!recipient?.optedIn) return res.status(403).json({ error: 'This number is not on the opted-in recipient list.' });
+    if (await isAlreadySentThisMonth(phone)) return res.status(409).json({ error: 'This number has already been sent a message.' });
+    if (await getMonthSentCount(monthKey) >= monthlyLimit) return res.status(429).json({ error: `Monthly limit of ${monthlyLimit} messages reached.` });
+    let result;
+    let label;
+    if (req.body?.mode === 'template') {
+      const name = String(req.body.templateName || '');
+      const language = String(req.body.language || '');
+      const definition = await getMessageTemplateDefinition(name, language);
+      if (definition.status !== 'APPROVED') return res.status(400).json({ error: 'Only APPROVED templates can be sent.' });
+      result = await sendTemplateMessage({ to: phone, templateName: name, languageCode: language, bodyVariables: req.body.variables || [], templateDefinition: definition });
+      label = name;
+    } else {
+      const text = String(req.body?.text || '').trim();
+      if (!text) return res.status(400).json({ error: 'Enter a plain text message or choose a template.' });
+      result = await sendTextMessage({ to: phone, text });
+      label = 'Plain text';
+    }
+    const messageId = result.messages[0].id;
+    const count = await recordSuccessfulSend(phone, monthKey, label, messageId);
+    res.json({ status: 'sent', phone, messageId, monthSentCount: count, monthlyLimit });
+  } catch (err) {
+    const detail = `Meta error ${err.metaCode ?? 'unknown'}: ${err.message}${err.errorDataDetails ? `; ${err.errorDataDetails}` : ''}\nJSON payload sent: ${JSON.stringify(err.payload || payload || {})}`;
+    recordFailedSend(phone, String(req.body?.templateName || (req.body?.mode === 'text' ? 'Plain text' : '')), detail);
+    res.status(err.responseStatus || 502).json({ error: err.message, metaCode: err.metaCode, errorDataDetails: err.errorDataDetails, payload: err.payload || payload, details: detail });
   }
 });
 

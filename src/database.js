@@ -19,19 +19,26 @@ db.exec(`
     template TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL CHECK (status IN ('sent', 'failed')),
     sent_at TEXT NOT NULL,
-    error TEXT
+    error TEXT,
+    message_id TEXT
   );
   CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,
     phone TEXT NOT NULL DEFAULT '',
-    action TEXT NOT NULL CHECK (action IN ('sent', 'failed', 'skipped', 'reply_sent', 'import', 'export')),
+    action TEXT NOT NULL CHECK (action IN ('sent', 'failed', 'skipped', 'reply_sent', 'import', 'export', 'status')),
     details TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS message_statuses (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS outbound_messages (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL, message_type TEXT NOT NULL DEFAULT '', sent_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'sent', failure_reason TEXT);
   CREATE INDEX IF NOT EXISTS logs_timestamp_idx ON logs(timestamp DESC);
   CREATE INDEX IF NOT EXISTS sent_numbers_month_idx ON sent_numbers(status, sent_at);
 `);
+
+// Additive migration for existing databases.
+const sentColumns = new Set(db.prepare('PRAGMA table_info(sent_numbers)').all().map(row => row.name));
+if (!sentColumns.has('message_id')) db.exec('ALTER TABLE sent_numbers ADD COLUMN message_id TEXT');
 
 const migrated = db.prepare("SELECT value FROM app_meta WHERE key = 'sent_log_json_migrated'").get();
 if (!migrated && fs.existsSync(LEGACY_LOG_PATH)) {
@@ -57,6 +64,10 @@ if (!migrated && fs.existsSync(LEGACY_LOG_PATH)) {
 }
 
 export const logEvents = new EventEmitter();
+export function recordOutboundMessage({ phone, messageId, messageType = '' }) {
+  if (!phone || !messageId) throw new Error('A phone number and Meta message ID are required to record a send.');
+  db.prepare(`INSERT INTO outbound_messages(message_id, phone, message_type, sent_at, status) VALUES (?, ?, ?, ?, 'sent') ON CONFLICT(message_id) DO NOTHING`).run(String(messageId), String(phone).replace(/\D/g, ''), String(messageType), new Date().toISOString());
+}
 export function addLog({ phone = '', action, details = '' }) {
   const timestamp = new Date().toISOString();
   const result = db.prepare('INSERT INTO logs(timestamp, phone, action, details) VALUES (?, ?, ?, ?)').run(timestamp, String(phone || ''), action, String(details || ''));

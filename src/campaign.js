@@ -237,7 +237,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
 
     // 5. Send approved template message
     try {
-      await sendTemplateMessage({
+      const sendResult = await sendTemplateMessage({
         to: normalized,
         templateName,
         languageCode,
@@ -257,7 +257,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
       });
 
       // Successful send - record in month tracking
-      currentMonthTotal = await recordSuccessfulSend(recipient.phone, monthKey, templateName);
+      currentMonthTotal = await recordSuccessfulSend(recipient.phone, monthKey, templateName, sendResult.messages[0].id);
       sentCount++;
       console.log(`[Campaign] Sent successfully to ${normalized} (${currentMonthTotal}/${monthlyLimit})`);
     } catch (err) {

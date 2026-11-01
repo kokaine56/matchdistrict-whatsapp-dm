@@ -1,4 +1,4 @@
-const GRAPH_API_VERSION = 'v21.0';
+const GRAPH_API_VERSION = 'v23.0';
 const templateMediaIds = new Map();
 
 async function uploadTemplateMedia(filePath, templateName, format, preferredMime = '') {
@@ -56,6 +56,43 @@ export async function getApprovedMessageTemplates() {
   return templates;
 }
 
+export async function getAllMessageTemplates() {
+  const accessToken = String(process.env.ACCESS_TOKEN || '').trim();
+  const wabaId = String(process.env.WABA_ID || '').trim();
+  if (!accessToken || !wabaId) throw new Error('ACCESS_TOKEN / PHONE_NUMBER_ID not set');
+  const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(wabaId)}/message_templates`);
+  url.searchParams.set('fields', 'id,name,status,category,language,components,rejected_reason');
+  url.searchParams.set('limit', '100');
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(15000) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw metaError(data, response);
+  return data.data || [];
+}
+
+export async function createMessageTemplate({ template, imagePath, imageMime }) {
+  const accessToken = String(process.env.ACCESS_TOKEN || '').trim();
+  const wabaId = String(process.env.WABA_ID || '').trim();
+  if (!accessToken || !wabaId) throw new Error('ACCESS_TOKEN / PHONE_NUMBER_ID not set');
+  if (imagePath) {
+    const appId = String(process.env.APP_ID || '').trim();
+    if (!appId) throw new Error('APP_ID not set for resumable image upload');
+    const file = await (await import('node:fs/promises')).readFile(imagePath);
+    const mime = imageMime || 'image/jpeg';
+    const fileName = imagePath.split(/[\\/]/).pop();
+    const init = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(appId)}/uploads?file_length=${file.length}&file_type=${encodeURIComponent(mime)}&file_name=${encodeURIComponent(fileName)}`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(15000) });
+    const initData = await init.json().catch(() => ({}));
+    if (!init.ok || !initData.id) throw metaError(initData, init);
+    const upload = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${initData.id}`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, file_offset: '0', 'Content-Type': 'application/octet-stream' }, body: file, signal: AbortSignal.timeout(15000) });
+    const uploadData = await upload.json().catch(() => ({}));
+    if (!upload.ok || !uploadData.h) throw metaError(uploadData, upload);
+    template.components.find(component => component.type === 'HEADER').example = { header_handle: [uploadData.h] };
+  }
+  const response = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(wabaId)}/message_templates`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(template), signal: AbortSignal.timeout(15000) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) { const err = metaError(data, response); err.payload = template; throw err; }
+  return data;
+}
+
 export async function getMessageTemplateDefinition(name, language) {
   const accessToken = process.env.ACCESS_TOKEN;
   const wabaId = process.env.WABA_ID;
@@ -82,31 +119,47 @@ function metaError(data, response) {
  * Base Meta Graph API request dispatcher.
  */
 async function callMetaGraphApi(payload) {
-  const accessToken = process.env.ACCESS_TOKEN;
-  const phoneNumberId = process.env.PHONE_NUMBER_ID;
+  const accessToken = String(process.env.ACCESS_TOKEN || '').trim();
+  const phoneNumberId = String(process.env.PHONE_NUMBER_ID || '').trim();
 
-  if (!accessToken || !phoneNumberId) {
-    throw new Error('ACCESS_TOKEN and PHONE_NUMBER_ID must be set in environment variables');
+  const isPlaceholder = value => !value || /^(your[_ -]?.*|<.*>|\{.*\}|replace[_ -]?.*)$/i.test(value);
+  if (isPlaceholder(accessToken) || isPlaceholder(phoneNumberId)) {
+    throw new Error('ACCESS_TOKEN / PHONE_NUMBER_ID not set');
   }
 
-  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
+  payload = { ...payload, messaging_product: 'whatsapp', recipient_type: 'individual', to: String(payload.to || '').replace(/\D/g, '') };
+  if (payload.to.length < 10 || payload.to.length > 15) throw new Error('Phone number must contain 10 to 15 digits, including country code.');
 
-  const response = await fetch(url, {
+  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`;
+  const payloadJson = JSON.stringify(payload);
+  let response;
+  try {
+    response = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(payload)
-  });
+    body: payloadJson,
+    signal: AbortSignal.timeout(15000)
+    });
+  } catch (cause) {
+    const error = new Error(cause?.name === 'TimeoutError' || cause?.name === 'AbortError' ? 'Meta request timed out after 15 seconds.' : `Network error while contacting Meta: ${cause?.message || 'connection failed'}`);
+    error.payload = payload;
+    error.errorDataDetails = `JSON payload sent: ${payloadJson}`;
+    throw error;
+  }
 
   const data = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
+  if (response.status !== 200 || !data?.messages?.[0]?.id) {
     const errorDetails = data?.error?.message || `HTTP ${response.status} ${response.statusText}`;
     const error = metaError(data, response);
     error.message = errorDetails;
     error.payload = payload;
+    error.responseStatus = response.status;
+    if (response.status !== 200 && !error.errorDataDetails) error.errorDataDetails = `JSON payload sent: ${payloadJson}`;
+    if (response.status === 200) error.message = `Meta returned HTTP 200 without messages[0].id`;
     throw error;
   }
 

@@ -290,6 +290,7 @@
             <button type="button" class="subnav-pill" data-subtab="msg-send-tab">
               <span>Send Campaign</span>
             </button>
+            <button type="button" class="subnav-pill" data-subtab="msg-create-template-tab"><span>Create Template</span></button>
           </div>
         </div>
 
@@ -519,7 +520,35 @@
         </div>
 
         <!-- SUBTAB 3: SEND CAMPAIGN -->
+        <div id="msg-create-template-tab" class="subtab-panel">
+          <div class="card"><div class="card-header-clean"><h2>Create Template</h2></div><div class="card-body-clean">
+            <form id="createTemplateForm" class="template-create-grid">
+              <div class="form-group"><label class="form-label" for="newTemplateName">Name</label><input id="newTemplateName" class="form-control" required placeholder="match_update"><span class="form-help">Converted to lowercase_with_underscores.</span></div>
+              <div class="form-group"><label class="form-label" for="newTemplateCategory">Category</label><select id="newTemplateCategory" class="form-control"><option>MARKETING</option><option>UTILITY</option></select></div>
+              <div class="form-group"><label class="form-label" for="newTemplateLanguage">Language</label><input id="newTemplateLanguage" class="form-control" required value="en_US" placeholder="en_US"></div>
+              <div class="form-group"><label class="form-label" for="newTemplateHeaderType">Header</label><select id="newTemplateHeaderType" class="form-control"><option value="none">None</option><option value="text">Text</option><option value="image">Image upload</option></select></div>
+              <div class="form-group" id="newTemplateHeaderTextWrap" hidden><label class="form-label" for="newTemplateHeaderText">Header text</label><input id="newTemplateHeaderText" class="form-control" maxlength="60"></div>
+              <div class="form-group" id="newTemplateHeaderImageWrap" hidden><label class="form-label" for="newTemplateHeaderImage">Header image</label><input id="newTemplateHeaderImage" type="file" accept="image/*" class="form-control"></div>
+              <div class="form-group"><label class="form-label" for="newTemplateBody">Body text</label><textarea id="newTemplateBody" class="form-control" rows="5" required placeholder="Hi {{1}}, your update is {{2}}."></textarea><div id="newTemplateSamples"></div></div>
+              <div class="form-group"><label class="form-label" for="newTemplateFooter">Footer (optional)</label><input id="newTemplateFooter" class="form-control" maxlength="60"></div>
+              <div class="form-group"><label class="form-label" for="newTemplateButtonType">Button (optional)</label><select id="newTemplateButtonType" class="form-control"><option value="none">No buttons</option><option value="quick_reply">Quick replies (up to 3)</option><option value="url">URL button</option><option value="phone">Phone button</option></select></div>
+              <div class="form-group" id="newTemplateButtonsFields" hidden></div>
+              <div class="card preview-card"><div class="card-header-clean"><h3>Live preview</h3></div><div class="card-body-clean"><div id="newTemplatePreview" class="preview-bubble"></div></div></div>
+              <div id="newTemplateResult" class="form-help" aria-live="polite"></div><button class="btn btn-primary" type="submit">Create Template</button>
+            </form>
+            <div class="form-actions-row"><button class="btn btn-secondary" type="button" id="refreshTemplates">Refresh status</button></div><div id="adminTemplateList" class="template-status-list"></div>
+          </div></div>
+        </div>
+
         <div id="msg-send-tab" class="subtab-panel">
+          <div class="card" style="margin-bottom:1rem"><div class="card-header-clean"><h2>Send to one number</h2></div><div class="card-body-clean">
+            <form id="sendOneForm"><div class="form-group"><label class="form-label" for="sendOnePhone">Phone number with country code</label><input id="sendOnePhone" class="form-control" required inputmode="tel" placeholder="+91 98765 43210"></div>
+              <div class="form-group"><label class="form-label" for="sendOneMode">Message type</label><select id="sendOneMode" class="form-control"><option value="template">Approved template</option><option value="text">Plain text</option></select></div>
+              <div class="form-group" id="sendOneTemplateWrap"><label class="form-label" for="sendOneTemplate">Template</label><select id="sendOneTemplate" class="form-control"></select><div id="sendOneVariables"></div></div>
+              <div class="form-group" id="sendOneTextWrap" hidden><label class="form-label" for="sendOneText">Plain text message</label><textarea id="sendOneText" class="form-control" rows="3"></textarea></div>
+              <button type="submit" class="btn btn-success">Send</button><div id="sendOneResult" class="form-help" aria-live="polite"></div>
+            </form>
+          </div></div>
           <div class="card send-dispatch-card">
             <div class="card-header-clean">
               <div class="card-header-title">

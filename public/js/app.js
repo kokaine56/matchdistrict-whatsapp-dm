@@ -1320,7 +1320,7 @@ if (btnModalConfirm) {
 
       if (!res.ok) {
         throw new Error(
-          `${data.metaCode !== undefined ? `Meta error ${data.metaCode}: ` : ''}${data.error || 'Failed to dispatch campaign'}${data.errorDataDetails ? `\n${data.errorDataDetails}` : ''}`
+          `${data.metaCode !== undefined ? `Meta error ${data.metaCode}: ` : ''}${data.error || 'Failed to dispatch campaign'}${data.errorDataDetails ? `\nerror_data.details: ${data.errorDataDetails}` : ''}${data.payload ? `\nJSON payload sent: ${JSON.stringify(data.payload)}` : ''}`
         );
       }
 
@@ -1608,6 +1608,81 @@ async function loadConfig() {
   }
 }
 
+const createTemplateForm = document.getElementById('createTemplateForm');
+const newTemplateBody = document.getElementById('newTemplateBody');
+const newTemplateName = document.getElementById('newTemplateName');
+const newTemplateResult = document.getElementById('newTemplateResult');
+const adminTemplateList = document.getElementById('adminTemplateList');
+const sendOneForm = document.getElementById('sendOneForm');
+const sendOneTemplate = document.getElementById('sendOneTemplate');
+
+if (newTemplateName) newTemplateName.addEventListener('input', () => { newTemplateName.value = newTemplateName.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); });
+function updateCreatePreview() {
+  if (!newTemplateBody) return;
+  const samples = [...document.querySelectorAll('[data-template-sample]')].map(input => input.value || `{{${input.dataset.templateSample}}}`);
+  let body = newTemplateBody.value.replace(/\{\{(\d+)\}\}/g, (_, n) => samples[Number(n) - 1] || `{{${n}}}`);
+  const headerType = document.getElementById('newTemplateHeaderType').value;
+  const header = headerType === 'text' ? document.getElementById('newTemplateHeaderText').value : headerType === 'image' ? '🖼️ Image header' : '';
+  const footer = document.getElementById('newTemplateFooter').value;
+  const buttonType = document.getElementById('newTemplateButtonType').value;
+  const buttonPreview = buttonType === 'quick_reply' ? document.getElementById('newTemplateButtonLabels')?.value : ['url', 'phone'].includes(buttonType) ? document.getElementById('newTemplateButtonLabel')?.value : '';
+  document.getElementById('newTemplatePreview').textContent = [header, body, footer, buttonPreview ? `［ ${buttonPreview} ］` : ''].filter(Boolean).join('\n');
+}
+function renderTemplateSamples() {
+  const host = document.getElementById('newTemplateSamples');
+  const count = Math.max(0, ...[...newTemplateBody.value.matchAll(/\{\{(\d+)\}\}/g)].map(match => Number(match[1])));
+  host.replaceChildren();
+  for (let index = 1; index <= count; index++) {
+    const input = document.createElement('input'); input.className = 'form-control'; input.placeholder = `Sample value for {{${index}}}`; input.dataset.templateSample = String(index); input.required = true;
+    const wrap = document.createElement('div'); wrap.className = 'form-group'; wrap.append(input); host.append(wrap);
+  }
+  host.querySelectorAll('input').forEach(input => input.addEventListener('input', updateCreatePreview));
+  updateCreatePreview();
+}
+newTemplateBody?.addEventListener('input', renderTemplateSamples);
+['newTemplateHeaderType', 'newTemplateHeaderText', 'newTemplateFooter'].forEach(id => document.getElementById(id)?.addEventListener('input', updateCreatePreview));
+document.getElementById('newTemplateHeaderType')?.addEventListener('change', event => {
+  document.getElementById('newTemplateHeaderTextWrap').hidden = event.target.value !== 'text';
+  document.getElementById('newTemplateHeaderImageWrap').hidden = event.target.value !== 'image'; updateCreatePreview();
+});
+document.getElementById('newTemplateButtonType')?.addEventListener('change', event => {
+  const host = document.getElementById('newTemplateButtonsFields'); host.hidden = event.target.value === 'none'; host.replaceChildren();
+  const fields = event.target.value === 'quick_reply' ? [['Labels (comma separated, max 3)', 'newTemplateButtonLabels', 'text']] : event.target.value === 'url' ? [['Button label', 'newTemplateButtonLabel', 'text'], ['HTTPS link', 'newTemplateButtonLink', 'url']] : event.target.value === 'phone' ? [['Button label', 'newTemplateButtonLabel', 'text'], ['Phone number', 'newTemplateButtonPhone', 'tel']] : [];
+  fields.forEach(([label, id, type]) => { const wrap = document.createElement('div'); wrap.className = 'form-group'; const l = document.createElement('label'); l.className='form-label'; l.htmlFor=id; l.textContent=label; const input=document.createElement('input'); input.id=id; input.type=type; input.className='form-control'; input.required=true; wrap.append(l,input); host.append(wrap); });
+  host.querySelectorAll('input').forEach(input => input.addEventListener('input', updateCreatePreview)); updateCreatePreview();
+});
+async function refreshAdminTemplates() {
+  const response = await fetch('/api/admin/message-templates/refresh', { method: 'POST' }); const data = await response.json();
+  if (response.status === 401) return (window.location.href = '/login');
+  if (!response.ok) throw new Error(data.error || 'Could not refresh template status');
+  adminTemplateList.replaceChildren();
+  (data.templates || []).forEach(template => { const row=document.createElement('div'); row.className='template-status-row'; const info=document.createElement('div'); const title=document.createElement('strong'); title.textContent=`${template.name} (${template.language})`; const state=document.createElement('span'); state.textContent=`${template.status}${template.rejected_reason ? ` · ${template.rejected_reason}` : ''}`; info.append(title,state); row.append(info); adminTemplateList.append(row); });
+  availableTemplates = (data.templates || []).filter(template => template.status === 'APPROVED').map(template => ({ name: template.name, language: template.language }));
+  const current = sendOneTemplate?.value; if (sendOneTemplate) { sendOneTemplate.replaceChildren(new Option('Choose approved template', '')); availableTemplates.forEach((template,index)=>sendOneTemplate.add(new Option(`${template.name} (${template.language})`, String(index)))); }
+  await loadMessageTemplates();
+}
+document.getElementById('refreshTemplates')?.addEventListener('click', () => refreshAdminTemplates().catch(err => showToast(err.message, 'danger')));
+createTemplateForm?.addEventListener('submit', async event => {
+  event.preventDefault(); newTemplateResult.textContent = 'Submitting template…';
+  const headerType=document.getElementById('newTemplateHeaderType').value; const buttonType=document.getElementById('newTemplateButtonType').value;
+  const buttons = buttonType === 'quick_reply' ? document.getElementById('newTemplateButtonLabels').value.split(',').map(value=>value.trim()).filter(Boolean).slice(0,3).map(text=>({type:'QUICK_REPLY',text})) : buttonType === 'url' ? [{type:'URL',text:document.getElementById('newTemplateButtonLabel').value.trim(),url:document.getElementById('newTemplateButtonLink').value.trim()}] : buttonType === 'phone' ? [{type:'PHONE_NUMBER',text:document.getElementById('newTemplateButtonLabel').value.trim(),phone_number:document.getElementById('newTemplateButtonPhone').value.replace(/\D/g,'')}] : [];
+  const form = new FormData(); form.set('name',newTemplateName.value); form.set('category',document.getElementById('newTemplateCategory').value); form.set('language',document.getElementById('newTemplateLanguage').value); form.set('headerType',headerType); form.set('headerText',document.getElementById('newTemplateHeaderText').value); form.set('body',newTemplateBody.value); form.set('footer',document.getElementById('newTemplateFooter').value); form.set('sampleValues',JSON.stringify([...document.querySelectorAll('[data-template-sample]')].map(input=>input.value))); form.set('buttons',JSON.stringify(buttons));
+  if (headerType==='image') { const file=document.getElementById('newTemplateHeaderImage').files[0]; if(file) form.set('headerImage',file); }
+  try { const response=await fetch('/api/admin/message-templates',{method:'POST',body:form}); const data=await response.json(); if(response.status===401) return (window.location.href='/login'); if(!response.ok) throw new Error([data.error,data.metaCode ? `Meta code ${data.metaCode}` : '',data.errorDataDetails, data.payload ? `Payload: ${JSON.stringify(data.payload)}` : ''].filter(Boolean).join('\n')); newTemplateResult.textContent=`Created ${data.template.name || newTemplateName.value}. Status: ${data.template.status || 'PENDING'}`; await refreshAdminTemplates(); } catch(error) { newTemplateResult.textContent=error.message; }
+});
+
+document.getElementById('sendOneMode')?.addEventListener('change', event => { const isText=event.target.value==='text'; document.getElementById('sendOneTemplateWrap').hidden=isText; document.getElementById('sendOneTextWrap').hidden=!isText; });
+sendOneTemplate?.addEventListener('change', async () => {
+  const template=availableTemplates[Number(sendOneTemplate.value)]; const host=document.getElementById('sendOneVariables'); host.replaceChildren(); if(!template) return;
+  try { const response=await fetch(`/api/message-template-definition?name=${encodeURIComponent(template.name)}&language=${encodeURIComponent(template.language)}`); const data=await response.json(); if(!response.ok) throw new Error(data.error); const body=data.template.components?.find(component=>component.type==='BODY')?.text || ''; const vars=Math.max(0,...[...body.matchAll(/\{\{(\d+)\}\}/g)].map(match=>Number(match[1]))); for(let i=1;i<=vars;i++){const input=document.createElement('input');input.className='form-control';input.placeholder=`Value for {{${i}}}`;input.dataset.sendVariable=String(i);input.required=true;host.append(input);} } catch(error) { host.textContent=error.message; }
+});
+sendOneForm?.addEventListener('submit', async event => {
+  event.preventDefault(); const result=document.getElementById('sendOneResult'); result.textContent='Sending…';
+  const mode=document.getElementById('sendOneMode').value; const template=availableTemplates[Number(sendOneTemplate.value)]; const payload={phone:document.getElementById('sendOnePhone').value,mode};
+  if(mode==='template'){if(!template){result.textContent='Choose an approved template.';return;} payload.templateName=template.name;payload.language=template.language;payload.variables=[...document.querySelectorAll('[data-send-variable]')].map(input=>input.value);} else payload.text=document.getElementById('sendOneText').value;
+  try {const response=await fetch('/api/admin/send-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(response.status===401)return(window.location.href='/login');if(!response.ok)throw new Error([data.error,data.metaCode !== undefined ? `Meta error code: ${data.metaCode}` : '',data.errorDataDetails ? `error_data.details: ${data.errorDataDetails}` : '',data.details,data.payload ? `JSON payload sent: ${JSON.stringify(data.payload)}` : ''].filter(Boolean).join('\n')); result.textContent=`Sent successfully. Meta message ID: ${data.messageId}`; loadStats();}catch(error){result.textContent=error.message;}
+});
+
 async function initialize() {
   try {
     await Promise.all([
@@ -1615,6 +1690,7 @@ async function initialize() {
       loadRecipients(),
       loadWebhookSetup(),
       loadMessageTemplates(),
+      refreshAdminTemplates().catch(error => console.warn('[Template status]', error.message)),
       openLiveLog()
     ]);
     await loadConfig();

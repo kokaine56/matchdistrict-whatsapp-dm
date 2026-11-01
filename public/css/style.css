@@ -2317,3 +2317,10 @@ textarea.form-control {
   color: var(--text-secondary);
   margin-bottom: 1.25rem;
 }
+.template-create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.template-create-grid > .form-group:nth-child(7), .template-create-grid > .preview-card, .template-create-grid > #newTemplateResult, .template-create-grid > button { grid-column: 1 / -1; }
+.template-create-grid [hidden] { display: none !important; }
+.template-status-list { display: grid; gap: .5rem; margin-top: 1rem; }
+.template-status-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .75rem; border: 1px solid var(--border-color, #e2e8f0); border-radius: .65rem; overflow-wrap: anywhere; }
+.template-status-row > div { display: flex; flex-direction: column; gap: .25rem; }
+@media (max-width: 640px) { .template-create-grid { grid-template-columns: minmax(0, 1fr); } .template-create-grid > * { grid-column: 1 !important; } .template-status-row { align-items: flex-start; } }

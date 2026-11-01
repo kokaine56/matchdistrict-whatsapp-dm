@@ -1,4 +1,4 @@
-import { db, addLog } from './database.js';
+import { db, addLog, recordOutboundMessage } from './database.js';
 
 export function normalizePhone(rawPhone) {
   if (!rawPhone) return '';
@@ -24,12 +24,13 @@ export async function getMonthSentCount(monthKey = getCurrentMonthKey()) {
   return db.prepare("SELECT COUNT(*) AS count FROM sent_numbers WHERE status = 'sent' AND sent_at >= ? AND sent_at < ?").get(start, end).count;
 }
 
-export async function recordSuccessfulSend(phone, monthKey = getCurrentMonthKey(), template = '') {
+export async function recordSuccessfulSend(phone, monthKey = getCurrentMonthKey(), template = '', messageId = '') {
   const normalized = normalizePhone(phone);
   const sentAt = new Date().toISOString();
-  db.prepare(`INSERT INTO sent_numbers(phone, template, status, sent_at, error) VALUES (?, ?, 'sent', ?, NULL)
-    ON CONFLICT(phone) DO UPDATE SET template=excluded.template, status='sent', sent_at=excluded.sent_at, error=NULL`).run(normalized, template, sentAt);
-  addLog({ phone: String(phone), action: 'sent', details: `Sent${template ? ` · ${template}` : ''}` });
+  db.prepare(`INSERT INTO sent_numbers(phone, template, status, sent_at, error, message_id) VALUES (?, ?, 'sent', ?, NULL, ?)
+    ON CONFLICT(phone) DO UPDATE SET template=excluded.template, status='sent', sent_at=excluded.sent_at, error=NULL, message_id=excluded.message_id`).run(normalized, template, sentAt, messageId);
+  recordOutboundMessage({ phone: normalized, messageId, messageType: template });
+  addLog({ phone: String(phone), action: 'sent', details: `Sent${template ? ` · ${template}` : ''}${messageId ? ` · Meta message ID: ${messageId}` : ''}` });
   return getMonthSentCount(monthKey);
 }
 
