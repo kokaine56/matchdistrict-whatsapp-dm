@@ -10,7 +10,9 @@ import {
   normalizePhone,
   recordSuccessfulSend,
   recordFailedSend,
-  recordSkipped
+  recordSkipped,
+  getMonthlyLimit,
+  getMessageStatusCounts
 } from './tracker.js';
 import { loadConfig } from './config.js';
 
@@ -172,7 +174,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
   }
   const templateDefinition = await getMessageTemplateDefinition(templateName, languageCode);
 
-  const monthlyLimit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
+  const monthlyLimit = getMonthlyLimit();
   const monthKey = getCurrentMonthKey();
   const recipients = await readRecipientsFromCsv();
 
@@ -187,6 +189,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
   let skippedDueToLimit = 0;
   let skippedCount = 0;
   const failedDetails = [];
+  const sentMessageIds = [];
 
   let currentMonthTotal = await getMonthSentCount(monthKey);
   let limitReached = false;
@@ -228,7 +231,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
       const remainingRecipients = recipients.slice(i);
       skippedDueToLimit = remainingRecipients.filter(r => r.optedIn).length;
       skippedCount += skippedDueToLimit;
-      for (const skipped of remainingRecipients.filter(r => r.optedIn)) recordSkipped(skipped.phone, 'Skipped: monthly 800 cap reached');
+      for (const skipped of remainingRecipients.filter(r => r.optedIn)) recordSkipped(skipped.phone, `Skipped: monthly ${monthlyLimit} cap reached`);
       console.warn(
         `[Campaign] Monthly limit reached (${currentMonthTotal}/${monthlyLimit}). Stopped immediately. Skipped ${skippedDueToLimit} remaining recipients.`
       );
@@ -257,7 +260,9 @@ export async function runCampaign(overrideCampaignConfig = null) {
       });
 
       // Successful send - record in month tracking
-      currentMonthTotal = await recordSuccessfulSend(recipient.phone, monthKey, templateName, sendResult.messages[0].id);
+      const messageId = sendResult.messages[0].id;
+      currentMonthTotal = await recordSuccessfulSend(recipient.phone, monthKey, templateName, messageId);
+      sentMessageIds.push(messageId);
       sentCount++;
       console.log(`[Campaign] Sent successfully to ${normalized} (${currentMonthTotal}/${monthlyLimit})`);
     } catch (err) {
@@ -270,6 +275,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
     }
   }
 
+  const deliveryCounts = getMessageStatusCounts(sentMessageIds);
   return {
     status: limitReached ? 'limit_reached' : 'completed',
     month: monthKey,
@@ -281,7 +287,13 @@ export async function runCampaign(overrideCampaignConfig = null) {
     alreadySentThisMonth: alreadySentCount,
     skipped: skippedCount,
     skippedOptOut: skippedOptOutCount,
-    failed: failedCount,
+    failed: failedCount + deliveryCounts.failed,
+    accepted: sentCount,
+    delivered: deliveryCounts.delivered,
+    read: deliveryCounts.read,
+    deliveryFailed: deliveryCounts.failed,
+    deliveryCounts,
+    sentMessageIds,
     skippedDueToLimit,
     currentMonthTotalSent: currentMonthTotal,
     remaining: Math.max(0, monthlyLimit - currentMonthTotal),

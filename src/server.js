@@ -16,8 +16,8 @@ import {
 } from './auth.js';
 import { loadConfig, saveConfig } from './config.js';
 import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, readRecipientsFromCsv, CSV_FILE } from './campaign.js';
-import { getCurrentMonthKey, getMonthSentCount, isAlreadySentThisMonth, normalizePhone, recordSuccessfulSend, recordFailedSend } from './tracker.js';
-import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents, recordOutboundMessage } from './database.js';
+import { getCurrentMonthKey, getMonthlyLimit, getMonthSentCount, isAlreadySentThisMonth, normalizePhone, recordSuccessfulSend, recordFailedSend } from './tracker.js';
+import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents, recordOutboundMessage, updateLogForMessageStatus } from './database.js';
 import { getApprovedMessageTemplates, getAllMessageTemplates, getMessageTemplateDefinition, createMessageTemplate, sendTemplateMessage, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -81,6 +81,14 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use((err, req, res, next) => {
+  if (req.path === '/webhook') {
+    const size = req.rawBody?.length || 0;
+    addLog({ action: 'webhook', details: `Incoming POST /webhook · event type: malformed JSON · size: ${size} bytes` });
+    return res.sendStatus(200);
+  }
+  return next(err);
+});
 
 // Static Assets
 // IMPORTANT: /uploads must stay public so Meta servers can fetch template header images & media
@@ -118,18 +126,30 @@ function hasValidMetaSignature(req) {
 // Webhook Receiver (POST /webhook)
 // Handles incoming user messages & interactive button taps
 app.post('/webhook', (req, res) => {
-  if (!hasValidMetaSignature(req)) return res.sendStatus(401);
+  const body = req.body;
+  const eventTypes = [];
+  for (const entry of body?.entry || []) for (const change of entry.changes || []) {
+    if (change.value?.statuses?.length) eventTypes.push('statuses');
+    if (change.value?.messages?.length) eventTypes.push('messages');
+  }
+  const eventType = [...new Set(eventTypes)].join(',') || String(body?.object || 'unknown');
+  const bodySize = req.rawBody?.length || 0;
+  addLog({ action: 'webhook', details: `Incoming POST /webhook · event type: ${eventType} · size: ${bodySize} bytes` });
+  const signatureConfigured = Boolean(String(process.env.META_APP_SECRET || '').trim());
+  if (signatureConfigured && !hasValidMetaSignature(req)) {
+    addLog({ action: 'signature_mismatch', details: `signature mismatch · event type: ${eventType} · size: ${bodySize} bytes` });
+    return res.sendStatus(200);
+  }
   // Acknowledge promptly; processing continues after the response.
   res.sendStatus(200);
 
-  const body = req.body;
   if (!body || body.object !== 'whatsapp_business_account') {
     return;
   }
 
   void (async () => { try {
-    const config = await loadConfig();
-    const autoReplyConfig = config.autoReply || {};
+    const config = await loadConfig().catch(error => { console.error('[Webhook Config Error]', error.message); return null; });
+    const autoReplyConfig = config?.autoReply || {};
     const entries = body.entry || [];
 
     for (const entry of entries) {
@@ -142,12 +162,15 @@ app.post('/webhook', (req, res) => {
           // Log only provider message ID and state; recipient data and credentials stay private.
           console.log(`[Webhook Status] message=${String(status.id || '').slice(0, 80)} status=${String(status.status || 'unknown').slice(0, 20)}`);
           const statusName = String(status.status || 'unknown');
-          const statusErrors = (status.errors || []).map(error => ({ code: error.code, message: error.title || error.message, details: error.error_data?.details })).filter(error => error.code || error.message || error.details);
-          const statusDetail = `Meta status ${statusName}${statusErrors.length ? ` · ${JSON.stringify(statusErrors)}` : ''}`;
+          const statusErrors = Array.isArray(status.errors) ? status.errors : [];
+          const errorDetail = statusErrors.length ? JSON.stringify(statusErrors) : '';
+          const statusDetail = `Meta status ${statusName}${errorDetail ? ` · errors: ${errorDetail}` : ''} · message ID: ${status.id || 'unknown'}`;
           db.prepare(`INSERT INTO message_statuses(message_id, phone, status, details, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(message_id) DO UPDATE SET status=excluded.status, details=excluded.details, updated_at=excluded.updated_at`).run(String(status.id || ''), String(status.recipient_id || ''), statusName, statusDetail, new Date().toISOString());
-          if (status.id) db.prepare('UPDATE outbound_messages SET status=?, failure_reason=? WHERE message_id=?').run(statusName, statusName === 'failed' ? statusDetail : null, String(status.id));
-          const matchedSend = status.id ? db.prepare('SELECT phone FROM sent_numbers WHERE message_id=?').get(String(status.id)) : null;
-          addLog({ phone: status.recipient_id || matchedSend?.phone || '', action: statusName === 'failed' ? 'failed' : 'sent', details: `${statusDetail} · message ID: ${status.id || 'unknown'}` });
+          if (status.id) db.prepare('UPDATE outbound_messages SET status=?, failure_reason=? WHERE message_id=?').run(statusName, statusName === 'failed' ? errorDetail : null, String(status.id));
+          const matchedSend = status.id ? (db.prepare('SELECT phone FROM outbound_messages WHERE message_id=?').get(String(status.id)) || db.prepare('SELECT phone FROM sent_numbers WHERE message_id=?').get(String(status.id))) : null;
+          const statusAction = ['sent', 'delivered', 'read', 'failed'].includes(statusName) ? statusName : 'webhook';
+          if (status.id && statusAction !== 'webhook') updateLogForMessageStatus(status.id, statusAction, statusDetail);
+          addLog({ phone: status.recipient_id || matchedSend?.phone || '', action: statusAction, details: statusDetail });
           if (status.status === 'failed') {
             const codes = (status.errors || []).map(error => error.code).filter(Number.isFinite);
             console.warn(`[Webhook Status Failed] message=${String(status.id || '').slice(0, 80)} codes=${codes.join(',') || 'unspecified'}`);
@@ -160,9 +183,12 @@ app.post('/webhook', (req, res) => {
           for (const msg of messages) {
             if (msg.id && !markEventProcessed(`message:${msg.id}`)) continue;
 
-            if (config.autoReplyEnabled === false) continue;
-
             const senderPhone = msg.from;
+            const receivedText = msg.text?.body || msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || msg.button?.text || msg.image?.caption || msg.video?.caption || `[${msg.type || 'message'}]`;
+            addLog({ phone: senderPhone || '', action: 'reply_received', details: `Reply received: ${receivedText}` });
+
+            if (!config || config.autoReplyEnabled === false) continue;
+
             console.log(`[Webhook Message] Received type=${String(msg.type || 'unknown').slice(0, 20)}`);
 
             // 1. Check if user tapped an interactive reply button or quick-reply button
@@ -354,7 +380,7 @@ app.post('/api/admin/message-templates', requireAuth, uploadImage.single('header
 
 app.post('/api/admin/send-one', requireAuth, async (req, res) => {
   const phone = normalizePhone(req.body?.phone);
-  const monthlyLimit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
+  const monthlyLimit = getMonthlyLimit();
   const monthKey = getCurrentMonthKey();
   let payload;
   try {
@@ -515,7 +541,7 @@ app.get('/api/stats', requireAuth, async (req, res) => {
   try {
     const monthKey = getCurrentMonthKey();
     const count = await getMonthSentCount(monthKey);
-    const limit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
+    const limit = getMonthlyLimit();
     res.json({
       monthKey,
       monthSentCount: count,

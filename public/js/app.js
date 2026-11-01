@@ -384,6 +384,10 @@ async function loadStats() {
     if (sentCountDisplay) sentCountDisplay.textContent = sent;
     if (limitDisplay) limitDisplay.textContent = limit;
     if (usageProgressFill) usageProgressFill.style.width = `${percent}%`;
+    document.querySelectorAll('[role="progressbar"]').forEach(bar => {
+      bar.setAttribute('aria-valuemax', String(limit));
+      bar.setAttribute('aria-valuenow', String(sent));
+    });
 
     const dashQuotaSentMobile = document.getElementById('dashQuotaSentMobile');
     const dashQuotaLimitMobile = document.getElementById('dashQuotaLimitMobile');
@@ -1333,11 +1337,11 @@ if (btnModalConfirm) {
       const isLimitHit = data.status === 'limit_reached';
       if (resultsAlert) {
         resultsAlert.className = `alert ${isLimitHit ? 'alert-warning' : 'alert-success'}`;
-        resultsAlert.innerHTML = `
-          <strong>${isLimitHit ? '⚠️ Monthly Limit Reached' : '✓ Campaign Finished'}</strong>: 
-          Sent: <strong>${data.sent}</strong> | Failed: <strong>${data.failed}</strong> | Skipped: <strong>${data.skipped}</strong> | Remaining: <strong>${data.remaining}</strong>
-        `;
+        resultsAlert.innerHTML = `<strong>${isLimitHit ? '⚠️ Monthly Limit Reached' : '✓ Campaign Finished'}</strong>: Skipped: <strong>${data.skipped}</strong> | Remaining: <strong>${data.remaining}</strong>`;
       }
+      activeCampaignMessageIds = new Set(data.sentMessageIds || []);
+      campaignCounts = { accepted: data.accepted ?? data.sent ?? 0, delivered: data.delivered || 0, read: data.read || 0, failed: data.failed || 0 };
+      renderCampaignDeliveryCounts();
 
       // Render Failed Numbers
       if (Array.isArray(data.failedDetails) && data.failedDetails.length > 0 && failedSection && failedTableBody) {
@@ -1366,12 +1370,18 @@ if (btnModalConfirm) {
 // Live Activity Log & Database Sync
 // ==========================================
 
-function logActionLabel(action) {
+function logActionLabel(action, details = '') {
   const labels = {
-    sent: 'Sent',
+    accepted: 'Accepted by Meta',
+    sent: /^Meta status sent\b/i.test(details) ? 'Sent' : 'Accepted by Meta',
+    delivered: 'Delivered',
+    read: 'Read',
     failed: 'Failed',
     skipped: 'Skipped',
+    reply_received: 'Reply received',
     reply_sent: 'Reply Sent',
+    webhook: 'Webhook',
+    signature_mismatch: 'Signature mismatch',
     import: 'DB Import',
     export: 'DB Export'
   };
@@ -1396,7 +1406,7 @@ function renderLiveLogs() {
         item.className = 'activity-mini-item';
         item.innerHTML = `
           <div class="activity-mini-left">
-            <span class="badge-tag log-${entry.action}">${logActionLabel(entry.action)}</span>
+            <span class="badge-tag log-${entry.action}">${logActionLabel(entry.action, entry.details)}</span>
             <strong>${escapeHtml(entry.phone || 'System')}</strong>
           </div>
           <span class="activity-mini-time">${formatLogTime(entry.timestamp)}</span>
@@ -1412,7 +1422,7 @@ function renderLiveLogs() {
 
   const query = logSearchQuery.trim().toLowerCase();
   const filtered = logEntries.filter(entry => {
-    if (logFilter === 'sent' && !(entry.action === 'sent' || entry.action === 'reply_sent')) return false;
+    if (logFilter === 'sent' && !(['accepted', 'sent', 'delivered', 'read', 'reply_sent', 'reply_received'].includes(entry.action))) return false;
     if (logFilter === 'failed' && entry.action !== 'failed') return false;
     if (logFilter === 'skipped' && entry.action !== 'skipped') return false;
     if (query) {
@@ -1444,7 +1454,7 @@ function renderLiveLogs() {
 
     const badge = document.createElement('span');
     badge.className = `badge-tag log-${entry.action}`;
-    badge.textContent = logActionLabel(entry.action);
+    badge.textContent = logActionLabel(entry.action, entry.details);
 
     header.append(time, phone, badge);
 
@@ -1459,11 +1469,25 @@ function renderLiveLogs() {
 
 function receiveLog(entry) {
   if (logIds.has(entry.id)) return;
+  const messageId = entry.details?.match(/message ID:\s*([^\s·]+)/i)?.[1];
+  if (messageId && activeCampaignMessageIds.has(messageId)) {
+    if (entry.action === 'delivered') campaignCounts.delivered++;
+    if (entry.action === 'read') campaignCounts.read++;
+    if (entry.action === 'failed') campaignCounts.failed++;
+    renderCampaignDeliveryCounts();
+  }
   logIds.add(entry.id);
   logEntries.unshift(entry);
   logEntries = logEntries.slice(0, 250);
   logViewCleared = false;
   renderLiveLogs();
+}
+
+let activeCampaignMessageIds = new Set();
+let campaignCounts = { accepted: 0, delivered: 0, read: 0, failed: 0 };
+function renderCampaignDeliveryCounts() {
+  const host = document.getElementById('campaignDeliveryCounts');
+  if (host) host.textContent = `Accepted by Meta: ${campaignCounts.accepted} · Delivered: ${campaignCounts.delivered} · Read: ${campaignCounts.read} · Failed: ${campaignCounts.failed}`;
 }
 
 async function openLiveLog() {

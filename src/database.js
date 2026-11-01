@@ -26,15 +26,34 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,
     phone TEXT NOT NULL DEFAULT '',
-    action TEXT NOT NULL CHECK (action IN ('sent', 'failed', 'skipped', 'reply_sent', 'import', 'export', 'status')),
+    action TEXT NOT NULL CHECK (action IN ('accepted', 'sent', 'delivered', 'read', 'failed', 'skipped', 'reply_received', 'reply_sent', 'webhook', 'signature_mismatch', 'import', 'export')),
     details TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS message_statuses (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS outbound_messages (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL, message_type TEXT NOT NULL DEFAULT '', sent_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'sent', failure_reason TEXT);
+  CREATE TABLE IF NOT EXISTS outbound_messages (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL, message_type TEXT NOT NULL DEFAULT '', sent_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'accepted', failure_reason TEXT);
   CREATE INDEX IF NOT EXISTS logs_timestamp_idx ON logs(timestamp DESC);
   CREATE INDEX IF NOT EXISTS sent_numbers_month_idx ON sent_numbers(status, sent_at);
 `);
+
+const logsSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='logs'").get()?.sql || '';
+if (!logsSchema.includes("'accepted'") || !logsSchema.includes("'delivered'")) {
+  db.exec('DROP INDEX IF EXISTS logs_timestamp_idx');
+  const migrateLogs = db.transaction(() => {
+    db.exec('ALTER TABLE logs RENAME TO logs_legacy');
+    db.exec(`CREATE TABLE logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL CHECK (action IN ('accepted', 'sent', 'delivered', 'read', 'failed', 'skipped', 'reply_received', 'reply_sent', 'webhook', 'signature_mismatch', 'import', 'export')),
+      details TEXT NOT NULL DEFAULT ''
+    )`);
+    db.exec('INSERT INTO logs(id, timestamp, phone, action, details) SELECT id, timestamp, phone, action, details FROM logs_legacy');
+    db.exec('DROP TABLE logs_legacy');
+    db.exec('CREATE INDEX logs_timestamp_idx ON logs(timestamp DESC)');
+  });
+  migrateLogs();
+}
 
 // Additive migration for existing databases.
 const sentColumns = new Set(db.prepare('PRAGMA table_info(sent_numbers)').all().map(row => row.name));
@@ -66,7 +85,12 @@ if (!migrated && fs.existsSync(LEGACY_LOG_PATH)) {
 export const logEvents = new EventEmitter();
 export function recordOutboundMessage({ phone, messageId, messageType = '' }) {
   if (!phone || !messageId) throw new Error('A phone number and Meta message ID are required to record a send.');
-  db.prepare(`INSERT INTO outbound_messages(message_id, phone, message_type, sent_at, status) VALUES (?, ?, ?, ?, 'sent') ON CONFLICT(message_id) DO NOTHING`).run(String(messageId), String(phone).replace(/\D/g, ''), String(messageType), new Date().toISOString());
+  const priorStatus = db.prepare('SELECT status, details FROM message_statuses WHERE message_id=?').get(String(messageId));
+  db.prepare(`INSERT INTO outbound_messages(message_id, phone, message_type, sent_at, status, failure_reason) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(message_id) DO NOTHING`).run(String(messageId), String(phone).replace(/\D/g, ''), String(messageType), new Date().toISOString(), priorStatus?.status || 'accepted', priorStatus?.status === 'failed' ? priorStatus.details : null);
+}
+export function updateLogForMessageStatus(messageId, action, details) {
+  const marker = `Meta message ID: ${String(messageId)}`;
+  return db.prepare(`UPDATE logs SET action=?, details=? WHERE id=(SELECT id FROM logs WHERE instr(details, ?) > 0 ORDER BY id DESC LIMIT 1)`).run(action, details, marker).changes;
 }
 export function addLog({ phone = '', action, details = '' }) {
   const timestamp = new Date().toISOString();
