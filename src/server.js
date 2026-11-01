@@ -2,9 +2,10 @@ import 'dotenv/config';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
+import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 
 import {
@@ -16,6 +17,7 @@ import {
 import { loadConfig, saveConfig } from './config.js';
 import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, CSV_FILE } from './campaign.js';
 import { getCurrentMonthKey, getMonthSentCount } from './tracker.js';
+import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents } from './database.js';
 import { getApprovedMessageTemplates, getMessageTemplateDefinition, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +52,7 @@ const csvStorage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, 'recipients.csv')
 });
 const uploadCsv = multer({ storage: csvStorage });
+const uploadDb = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 // Meta verification is intentionally handled before any middleware.
 app.get('/webhook', (req, res) => {
@@ -181,8 +184,10 @@ app.post('/webhook', (req, res) => {
                     to: senderPhone,
                     text: matchedBtn.reply
                   });
+                  addLog({ phone: senderPhone, action: 'reply_sent', details: `Reply sent: ${matchedBtn.reply}` });
                   console.log('[Webhook] Follow-up reply sent.');
                 } catch (err) {
+                  addLog({ phone: senderPhone, action: 'failed', details: `Reply failed: ${err.message}` });
                   console.error('[Webhook Button Reply Error] Could not send configured button reply.');
                 }
               }
@@ -197,8 +202,10 @@ app.post('/webhook', (req, res) => {
                   to: senderPhone,
                   autoReplyConfig
                 });
+                addLog({ phone: senderPhone, action: 'reply_sent', details: 'Auto-reply sent' });
                 console.log('[Webhook] Auto-reply sent.');
               } catch (err) {
+                addLog({ phone: senderPhone, action: 'failed', details: `Auto-reply failed: ${err.message}` });
                 console.error('[Webhook Auto-Reply Error] Could not send configured auto-reply.');
               }
             }
@@ -324,6 +331,72 @@ app.get('/api/config', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/logs', requireAuth, (req, res) => res.json({ logs: getRecentLogs(200) }));
+
+app.get('/api/logs/stream', requireAuth, (req, res) => {
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  const push = row => res.write(`id: ${row.id}\nevent: log\ndata: ${JSON.stringify(row)}\n\n`);
+  logEvents.on('log', push);
+  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 25000);
+  req.on('close', () => { clearInterval(heartbeat); logEvents.off('log', push); });
+});
+
+app.get('/api/database/download', requireAuth, (req, res, next) => {
+  try {
+    addLog({ action: 'export', details: 'Database downloaded' });
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    res.download(DATABASE_PATH, 'outreach.db');
+  } catch (error) { next(error); }
+});
+
+app.post('/api/database/import', requireAuth, uploadDb.single('database'), (req, res) => {
+  let importPath = '';
+  let source;
+  try {
+    if (!req.file || path.extname(req.file.originalname).toLowerCase() !== '.db') return res.status(400).json({ error: 'Choose a .db file to import.' });
+    importPath = path.join(path.dirname(DATABASE_PATH), `import_${randomUUID()}.db`);
+    fs.writeFileSync(importPath, req.file.buffer);
+    source = new Database(importPath, { readonly: true, fileMustExist: true });
+    const tables = new Set(source.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
+    if (!tables.has('sent_numbers') || !tables.has('logs')) return res.status(400).json({ error: 'Database is missing sent_numbers or logs table.' });
+    const sentCols = new Set(source.prepare('PRAGMA table_info(sent_numbers)').all().map(row => row.name));
+    const logCols = new Set(source.prepare('PRAGMA table_info(logs)').all().map(row => row.name));
+    if (!['phone', 'template', 'status', 'sent_at', 'error'].every(col => sentCols.has(col)) || !['id', 'timestamp', 'phone', 'action', 'details'].every(col => logCols.has(col))) {
+      return res.status(400).json({ error: 'Database tables do not match the expected schema.' });
+    }
+    const incomingNumbers = source.prepare('SELECT phone, template, status, sent_at, error FROM sent_numbers').all();
+    const incomingLogs = source.prepare('SELECT timestamp, phone, action, details FROM logs').all();
+    const mergeNumber = db.prepare(`INSERT INTO sent_numbers(phone, template, status, sent_at, error) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(phone) DO UPDATE SET
+        sent_at = CASE WHEN excluded.sent_at < sent_numbers.sent_at THEN excluded.sent_at ELSE sent_numbers.sent_at END,
+        status = CASE WHEN sent_numbers.status='sent' OR excluded.status='sent' THEN 'sent' ELSE 'failed' END,
+        template = CASE WHEN excluded.status='sent' AND sent_numbers.status!='sent' THEN excluded.template ELSE sent_numbers.template END,
+        error = CASE WHEN sent_numbers.status='sent' OR excluded.status='sent' THEN NULL ELSE sent_numbers.error END`);
+    let added = 0;
+    const transaction = db.transaction(() => {
+      for (const row of incomingNumbers) {
+        const phone = String(row.phone || '').replace(/\D/g, '');
+        if (!phone || !['sent', 'failed'].includes(row.status) || !Number.isFinite(Date.parse(row.sent_at))) continue;
+        const exists = Boolean(db.prepare('SELECT 1 FROM sent_numbers WHERE phone=?').get(phone));
+        mergeNumber.run(phone, String(row.template || ''), row.status, new Date(row.sent_at).toISOString(), row.error || null);
+        if (!exists) added++;
+      }
+      const insertLog = db.prepare(`INSERT INTO logs(timestamp, phone, action, details)
+        SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM logs WHERE timestamp=? AND phone=? AND action=? AND details=?)`);
+      for (const row of incomingLogs) {
+        if (!Number.isFinite(Date.parse(row.timestamp)) || !['sent', 'failed', 'skipped', 'reply_sent', 'import', 'export'].includes(row.action)) continue;
+        insertLog.run(row.timestamp, row.phone || '', row.action, row.details || '', row.timestamp, row.phone || '', row.action, row.details || '');
+      }
+    });
+    transaction();
+    addLog({ action: 'import', details: `Database imported · ${added} numbers added` });
+    res.json({ status: 'ok', added });
+  } catch (error) { res.status(400).json({ error: `Database import failed: ${error.message}` }); }
+  finally { source?.close(); if (importPath && fs.existsSync(importPath)) fs.unlinkSync(importPath); }
 });
 
 // Update Config

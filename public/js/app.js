@@ -64,6 +64,14 @@ const resultsCard = document.getElementById('resultsCard');
 const resultsAlert = document.getElementById('resultsAlert');
 const failedSection = document.getElementById('failedSection');
 const failedTableBody = document.getElementById('failedTableBody');
+const liveLogList = document.getElementById('liveLogList');
+const importDbFile = document.getElementById('importDbFile');
+const dbSyncStatus = document.getElementById('dbSyncStatus');
+let logSource = null;
+let logFilter = 'all';
+let logIds = new Set();
+let logEntries = [];
+let logViewCleared = false;
 
 // --- TABS SWITCHING ---
 tabBtns.forEach(btn => {
@@ -73,6 +81,7 @@ tabBtns.forEach(btn => {
     btn.classList.add('active');
     const target = document.getElementById(btn.dataset.tab);
     if (target) target.classList.add('active');
+    if (target?.id === 'logs-tab') openLiveLog();
     if (target?.id === 'campaign-tab' && window.matchMedia('(max-width: 700px)').matches) document.querySelector('.preview-panel')?.setAttribute('open', '');
   });
 });
@@ -715,11 +724,7 @@ btnModalConfirm.addEventListener('click', async () => {
     resultsAlert.className = `alert ${isLimitHit ? 'alert-warning' : 'alert-success'}`;
     resultsAlert.innerHTML = `
       <strong>${isLimitHit ? '⚠️ Monthly Limit Reached' : '✓ Campaign Finished'}</strong>: 
-      Successfully sent: <strong>${data.sent}</strong> | 
-      Already messaged this month: <strong>${data.alreadySentThisMonth}</strong> | 
-      Skipped (opted-out): <strong>${data.skippedOptOut}</strong> | 
-      Skipped due to 800 cap: <strong>${data.skippedDueToLimit}</strong> | 
-      Failed: <strong>${data.failed}</strong>
+      Sent: <strong>${data.sent}</strong> | Failed: <strong>${data.failed}</strong> | Skipped: <strong>${data.skipped}</strong> | Remaining of 800: <strong>${data.remaining}</strong>
     `;
 
     // Render Failed Sends Table if any
@@ -754,4 +759,63 @@ btnModalConfirm.addEventListener('click', async () => {
 
 // Run startup
 initialize();
+
+function logActionLabel(action) {
+  return ({ sent: 'Sent', failed: 'Failed', skipped: 'Skipped', reply_sent: 'Reply sent', import: 'Import', export: 'Export' })[action] || action;
+}
+function logMatchesFilter(entry) {
+  if (logFilter === 'all') return true;
+  if (logFilter === 'sent') return entry.action === 'sent' || entry.action === 'reply_sent';
+  return entry.action === logFilter;
+}
+function formatLogTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+function renderLiveLogs() {
+  if (logViewCleared) return;
+  liveLogList.replaceChildren();
+  const entries = logEntries.filter(logMatchesFilter);
+  if (!entries.length) { const empty = document.createElement('p'); empty.className = 'help-text'; empty.textContent = 'No log entries for this filter.'; liveLogList.append(empty); return; }
+  entries.forEach(entry => {
+    const card = document.createElement('article'); card.className = 'live-log-entry';
+    const header = document.createElement('div'); header.className = 'live-log-entry-header';
+    const time = document.createElement('time'); time.dateTime = entry.timestamp; time.textContent = formatLogTime(entry.timestamp);
+    const phone = document.createElement('strong'); phone.textContent = entry.phone || '—';
+    const badge = document.createElement('span'); badge.className = `log-badge log-${entry.action}`; badge.textContent = logActionLabel(entry.action);
+    header.append(time, phone, badge);
+    const details = document.createElement('p'); details.className = 'live-log-details'; details.textContent = entry.details || '';
+    card.append(header, details); liveLogList.append(card);
+  });
+}
+function receiveLog(entry) {
+  if (logIds.has(entry.id)) return;
+  logIds.add(entry.id); logEntries.unshift(entry); logEntries = logEntries.slice(0, 200); logViewCleared = false; renderLiveLogs();
+}
+async function openLiveLog() {
+  try {
+    const response = await fetch('/api/logs');
+    if (response.status === 401) return (window.location.href = '/login');
+    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not load logs');
+    logEntries = data.logs || []; logIds = new Set(logEntries.map(entry => entry.id)); logViewCleared = false; renderLiveLogs();
+    if (!logSource) { logSource = new EventSource('/api/logs/stream'); logSource.addEventListener('log', event => { try { receiveLog(JSON.parse(event.data)); } catch { /* Ignore malformed stream rows. */ } }); }
+  } catch (error) { liveLogList.textContent = `Could not load live log: ${error.message}`; }
+}
+document.querySelectorAll('[data-log-filter]').forEach(button => button.addEventListener('click', () => {
+  logFilter = button.dataset.logFilter;
+  document.querySelectorAll('[data-log-filter]').forEach(item => item.classList.toggle('active', item === button));
+  renderLiveLogs();
+}));
+document.getElementById('btnClearLogView').addEventListener('click', () => { logViewCleared = true; liveLogList.replaceChildren(); });
+document.getElementById('btnImportDb').addEventListener('click', () => importDbFile.click());
+importDbFile.addEventListener('change', async () => {
+  const file = importDbFile.files?.[0]; if (!file) return;
+  const form = new FormData(); form.append('database', file); dbSyncStatus.textContent = 'Importing database…';
+  try {
+    const response = await fetch('/api/database/import', { method: 'POST', body: form }); const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Database import failed');
+    dbSyncStatus.textContent = `Import complete. ${data.added} number(s) added.`; await openLiveLog();
+  } catch (error) { dbSyncStatus.textContent = error.message; }
+  finally { importDbFile.value = ''; }
+});
 

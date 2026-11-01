@@ -38,6 +38,7 @@
       <button class="tab-btn" data-tab="recipients-tab"><span>♙</span><span>Recipients</span></button>
       <button class="tab-btn" data-tab="send-tab"><span>➤</span><span>Send</span></button>
       <button class="tab-btn" data-tab="webhook-tab"><span>⌁</span><span>Webhook</span></button>
+      <button class="tab-btn" data-tab="logs-tab"><span>▤</span><span>Live Log</span></button>
     </div>
 
     <!-- TAB 4: WEBHOOK SETUP -->
@@ -317,6 +318,31 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div id="logs-tab" class="tab-content">
+      <div class="card">
+        <h2 class="card-title">Database Sync</h2>
+        <div class="log-db-actions">
+          <a class="btn btn-secondary" href="/api/database/download">Download DB</a>
+          <button type="button" class="btn btn-secondary" id="btnImportDb">Import DB</button>
+          <input type="file" id="importDbFile" accept=".db,application/x-sqlite3" hidden>
+        </div>
+        <p class="help-text" id="dbSyncStatus" aria-live="polite"></p>
+      </div>
+      <div class="card live-log-card">
+        <div class="live-log-heading">
+          <h2 class="card-title">Live Log</h2>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnClearLogView">Clear view</button>
+        </div>
+        <div class="log-filters" role="group" aria-label="Filter log entries">
+          <button type="button" class="active" data-log-filter="all">All</button>
+          <button type="button" data-log-filter="sent">Sent</button>
+          <button type="button" data-log-filter="failed">Failed</button>
+          <button type="button" data-log-filter="skipped">Skipped</button>
+        </div>
+        <div id="liveLogList" class="live-log-list" aria-live="polite"><p class="help-text">Open this screen to load recent activity.</p></div>
       </div>
     </div>
   </div>

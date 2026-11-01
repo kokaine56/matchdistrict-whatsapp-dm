@@ -20,8 +20,12 @@
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "csv-parser": "^3.2.0",
+    "better-sqlite3": "^12.2.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.5.0"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
   }
 }

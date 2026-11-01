@@ -8,7 +8,9 @@ import {
   getMonthSentCount,
   isAlreadySentThisMonth,
   normalizePhone,
-  recordSuccessfulSend
+  recordSuccessfulSend,
+  recordFailedSend,
+  recordSkipped
 } from './tracker.js';
 import { loadConfig } from './config.js';
 
@@ -183,6 +185,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
   let skippedOptOutCount = 0;
   let failedCount = 0;
   let skippedDueToLimit = 0;
+  let skippedCount = 0;
   const failedDetails = [];
 
   let currentMonthTotal = await getMonthSentCount(monthKey);
@@ -192,9 +195,20 @@ export async function runCampaign(overrideCampaignConfig = null) {
     const recipient = recipients[i];
     const normalized = normalizePhone(recipient.phone);
 
+    // Previously sent numbers remain excluded across all campaigns and months.
+    const alreadySent = await isAlreadySentThisMonth(normalized);
+    if (alreadySent) {
+      alreadySentCount++;
+      skippedCount++;
+      recordSkipped(recipient.phone, 'Skipped: already sent');
+      continue;
+    }
+
     // 1. Skip non-opted-in numbers
     if (!recipient.optedIn) {
       skippedOptOutCount++;
+      skippedCount++;
+      recordSkipped(recipient.phone, 'Skipped: opted out');
       continue;
     }
 
@@ -202,14 +216,9 @@ export async function runCampaign(overrideCampaignConfig = null) {
     if (!normalized || normalized.length < 7) {
       console.warn(`[Campaign] Skipping invalid phone number: "${recipient.phone}"`);
       failedCount++;
-      failedDetails.push({ phone: recipient.phone, error: 'Invalid phone number format' });
-      continue;
-    }
-
-    // 3. Check if already messaged this calendar month
-    const alreadySent = await isAlreadySentThisMonth(normalized, monthKey);
-    if (alreadySent) {
-      alreadySentCount++;
+      const error = 'Invalid phone number format';
+      failedDetails.push({ phone: recipient.phone, error });
+      recordFailedSend(recipient.phone, templateName, error);
       continue;
     }
 
@@ -218,6 +227,8 @@ export async function runCampaign(overrideCampaignConfig = null) {
       limitReached = true;
       const remainingRecipients = recipients.slice(i);
       skippedDueToLimit = remainingRecipients.filter(r => r.optedIn).length;
+      skippedCount += skippedDueToLimit;
+      for (const skipped of remainingRecipients.filter(r => r.optedIn)) recordSkipped(skipped.phone, 'Skipped: monthly 800 cap reached');
       console.warn(
         `[Campaign] Monthly limit reached (${currentMonthTotal}/${monthlyLimit}). Stopped immediately. Skipped ${skippedDueToLimit} remaining recipients.`
       );
@@ -246,7 +257,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
       });
 
       // Successful send - record in month tracking
-      currentMonthTotal = await recordSuccessfulSend(normalized, monthKey);
+      currentMonthTotal = await recordSuccessfulSend(recipient.phone, monthKey, templateName);
       sentCount++;
       console.log(`[Campaign] Sent successfully to ${normalized} (${currentMonthTotal}/${monthlyLimit})`);
     } catch (err) {
@@ -254,6 +265,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
       failedCount++;
       const templateError = `Meta error ${err.metaCode ?? 'unknown'}: ${err.message}${err.errorDataDetails ? `; ${err.errorDataDetails}` : ''}\nPayload: ${JSON.stringify(err.payload || {})}`;
       failedDetails.push({ phone: normalized, error: templateError });
+      recordFailedSend(recipient.phone, templateName, templateError);
       console.error(`[Campaign Error] Failed to send to ${normalized}:`, err.message);
     }
   }
@@ -267,10 +279,12 @@ export async function runCampaign(overrideCampaignConfig = null) {
     totalInCsv: recipients.length,
     sent: sentCount,
     alreadySentThisMonth: alreadySentCount,
+    skipped: skippedCount,
     skippedOptOut: skippedOptOutCount,
     failed: failedCount,
     skippedDueToLimit,
     currentMonthTotalSent: currentMonthTotal,
+    remaining: Math.max(0, monthlyLimit - currentMonthTotal),
     ...(limitReached && {
       message: `Monthly limit of ${monthlyLimit} unique users messaged for ${monthKey} was reached. Stopped immediately; ${skippedDueToLimit} opted-in recipients were skipped.`
     }),
