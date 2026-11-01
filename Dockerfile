@@ -1,5 +1,5 @@
 # Use lightweight Node.js LTS image
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 
 # Set working directory
 WORKDIR /app
@@ -9,6 +9,9 @@ ENV NODE_ENV=production
 
 # Copy package manifests first for efficient caching
 COPY package*.json ./
+
+# Install build tools for native dependencies as a fallback
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Install production dependencies only
 RUN npm ci --omit=dev
