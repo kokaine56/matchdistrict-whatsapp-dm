@@ -88,41 +88,7 @@
               <p class="help-text">The language code is selected with the template and sent exactly as Meta returns it.</p>
             </div>
 
-            <!-- Header Image -->
-            <div class="form-group">
-              <label>Header Image (Public URL or Upload)</label>
-              <div class="upload-row">
-                <input type="url" id="headerImageUrl" placeholder="https://example.com/banner.jpg">
-                <input type="file" id="headerImageFile" accept="image/*">
-                <button type="button" class="btn btn-secondary btn-sm" id="btnUploadHeaderImg">Upload</button>
-              </div>
-              <p class="help-text">Uploads are saved in /uploads and served publicly for Meta.</p>
-            </div>
-
-            <!-- Body Variables -->
-            <div class="form-group">
-              <label>Body Variables ({{1}}, {{2}}...)</label>
-              <div id="variablesContainer" class="var-list">
-                <!-- Dynamic rows injected by JS -->
-              </div>
-              <button type="button" class="btn btn-secondary btn-sm" id="btnAddVariable">+ Add Variable</button>
-            </div>
-
-            <!-- URL Button Dynamic Value -->
-            <div class="form-group">
-              <label for="urlButtonValue">Dynamic URL Button Suffix / Value</label>
-              <input type="text" id="urlButtonValue" placeholder="e.g. promo2026 or referral-code">
-              <p class="help-text">Passed to templates configured with dynamic website buttons.</p>
-            </div>
-
-            <!-- Quick Reply Payloads -->
-            <div class="form-group">
-              <label>Quick Reply Payloads</label>
-              <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                <input type="text" id="qrPayload0" placeholder="Payload 1 (e.g. YES)">
-                <input type="text" id="qrPayload1" placeholder="Payload 2 (e.g. NO)">
-              </div>
-            </div>
+            <div id="templateFields"></div>
 
             <button type="submit" class="btn btn-primary" style="width: 100%;">Save Campaign Settings</button>
           </form>

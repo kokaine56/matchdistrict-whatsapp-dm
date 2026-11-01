@@ -16,7 +16,7 @@ import {
 import { loadConfig, saveConfig } from './config.js';
 import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, CSV_FILE } from './campaign.js';
 import { getCurrentMonthKey, getMonthSentCount } from './tracker.js';
-import { getApprovedMessageTemplates, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
+import { getApprovedMessageTemplates, getMessageTemplateDefinition, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -286,6 +286,15 @@ app.get('/api/message-templates', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/message-template-definition', requireAuth, async (req, res) => {
+  try {
+    const name = String(req.query.name || '');
+    const language = String(req.query.language || '');
+    if (!name) return res.status(400).json({ error: 'Template name is required.' });
+    res.json({ template: await getMessageTemplateDefinition(name, language) });
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
 app.get('/api/config', requireAuth, async (req, res) => {
   try {
     const config = await loadConfig();
@@ -405,7 +414,7 @@ app.post('/api/send-campaign', requireAuth, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[Send Campaign Error]', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, metaCode: err.metaCode, errorDataDetails: err.errorDataDetails, payload: err.payload });
   }
 });
 

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import csvParser from 'csv-parser';
-import { sendTemplateMessage } from './whatsapp.js';
+import { sendTemplateMessage, getMessageTemplateDefinition } from './whatsapp.js';
 import {
   getCurrentMonthKey,
   getMonthSentCount,
@@ -168,6 +168,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
   if (typeof templateName !== 'string' || !templateName || typeof languageCode !== 'string' || !languageCode) {
     throw new Error('Select an approved Meta template and its language before sending.');
   }
+  const templateDefinition = await getMessageTemplateDefinition(templateName, languageCode);
 
   const monthlyLimit = parseInt(process.env.MONTHLY_LIMIT || '800', 10);
   const monthKey = getCurrentMonthKey();
@@ -232,7 +233,10 @@ export async function runCampaign(overrideCampaignConfig = null) {
         headerImageUrl: campaignSettings.headerImageUrl,
         bodyVariables: campaignSettings.bodyVariables,
         urlButtonValue: campaignSettings.urlButtonValue,
-        quickReplyPayloads: campaignSettings.quickReplyPayloads
+        quickReplyPayloads: campaignSettings.quickReplyPayloads,
+        urlButtonValues: campaignSettings.urlButtonValues,
+        headerText: campaignSettings.headerText,
+        templateDefinition
       });
 
       // Successful send - record in month tracking
@@ -242,9 +246,7 @@ export async function runCampaign(overrideCampaignConfig = null) {
     } catch (err) {
       // 6. On failure: log error, do NOT count toward 800 limit, continue to next
       failedCount++;
-      const templateError = [132001, 132000].includes(Number(err.metaCode))
-        ? `Meta error ${err.metaCode}: ${err.message} Template sent: ${templateName}; language sent: ${languageCode}.`
-        : err.message;
+      const templateError = `Meta error ${err.metaCode ?? 'unknown'}: ${err.message}${err.errorDataDetails ? `; ${err.errorDataDetails}` : ''}\nPayload: ${JSON.stringify(err.payload || {})}`;
       failedDetails.push({ phone: normalized, error: templateError });
       console.error(`[Campaign Error] Failed to send to ${normalized}:`, err.message);
     }

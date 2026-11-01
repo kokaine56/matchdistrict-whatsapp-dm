@@ -9,6 +9,8 @@ let currentConfig = null;
 let currentStats = null;
 let currentRecipients = null;
 let availableTemplates = [];
+let selectedDefinition = null;
+const templateFields = document.getElementById('templateFields');
 
 // DOM Elements
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -23,14 +25,6 @@ const limitDisplay = document.getElementById('limitDisplay');
 // Campaign Elements
 const templateSelect = document.getElementById('templateSelect');
 const languageCodeInput = document.getElementById('languageCode');
-const headerImageUrlInput = document.getElementById('headerImageUrl');
-const headerImageFileInput = document.getElementById('headerImageFile');
-const btnUploadHeaderImg = document.getElementById('btnUploadHeaderImg');
-const variablesContainer = document.getElementById('variablesContainer');
-const btnAddVariable = document.getElementById('btnAddVariable');
-const urlButtonValueInput = document.getElementById('urlButtonValue');
-const qrPayload0Input = document.getElementById('qrPayload0');
-const qrPayload1Input = document.getElementById('qrPayload1');
 const campaignForm = document.getElementById('campaignForm');
 
 // Preview Elements
@@ -201,15 +195,7 @@ async function loadConfig() {
   // Populate Campaign
   const c = currentConfig.campaign || {};
   selectTemplate(c.template, c.languageCode);
-  headerImageUrlInput.value = c.headerImageUrl || '';
-  urlButtonValueInput.value = c.urlButtonValue || '';
-  if (c.quickReplyPayloads?.[0]) qrPayload0Input.value = c.quickReplyPayloads[0];
-  if (c.quickReplyPayloads?.[1]) qrPayload1Input.value = c.quickReplyPayloads[1];
-
-  // Populate Variables
-  variablesContainer.innerHTML = '';
-  const vars = Array.isArray(c.bodyVariables) && c.bodyVariables.length > 0 ? c.bodyVariables : [''];
-  vars.forEach(v => addVariableRow(v));
+  await loadTemplateDefinition(c);
 
   // Populate Auto-Reply
   const ar = currentConfig.autoReply || {};
@@ -371,33 +357,36 @@ toggleAllRecipients.addEventListener('click', async () => {
 });
 
 // --- DYNAMIC VARIABLES LOGIC ---
-function addVariableRow(val = '') {
-  const index = variablesContainer.children.length + 1;
-  const row = document.createElement('div');
-  row.className = 'var-row';
-  row.innerHTML = `
-    <span class="var-tag">{{${index}}}</span>
-    <input type="text" class="var-input" placeholder="Variable {{${index}}} value" value="${val}">
-    <button type="button" class="btn btn-secondary btn-sm btn-remove-var">✕</button>
-  `;
-  row.querySelector('.var-input').addEventListener('input', updateLivePreview);
-  row.querySelector('.btn-remove-var').addEventListener('click', () => {
-    row.remove();
-    reindexVariables();
-    updateLivePreview();
+function cleanCampaignValue(value) { return String(value ?? '').trim().replace(/[\r\n\t]+/g, ' ').replace(/ {4,}/g, ' '); }
+async function loadTemplateDefinition(saved = {}) {
+  const tpl = selectedTemplate();
+  selectedDefinition = null;
+  templateFields.replaceChildren();
+  if (!tpl) return;
+  const response = await fetch(`/api/message-template-definition?name=${encodeURIComponent(tpl.name)}&language=${encodeURIComponent(tpl.language)}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not load template definition');
+  selectedDefinition = data.template;
+  const components = selectedDefinition.components || [];
+  const addField = (label, key, value = '', type = 'text', required = true) => {
+    const wrap = document.createElement('div'); wrap.className = 'form-group';
+    const lab = document.createElement('label'); lab.textContent = label;
+    const input = document.createElement('input'); input.type = type; input.dataset.campaignKey = key; input.value = value || ''; input.required = required;
+    wrap.append(lab, input); templateFields.append(wrap); return input;
+  };
+  const header = components.find(c => c.type === 'HEADER');
+  const headerVars = (header?.text || '').match(/\{\{[^}]+\}\}/g) || [];
+  if (header && header.format !== 'TEXT') addField(`${header.format} header public HTTPS URL`, 'headerImageUrl', saved.headerImageUrl, 'url');
+  if (headerVars.length) addField('Header text', 'headerText', saved.headerText);
+  const body = components.find(c => c.type === 'BODY');
+  const vars = (body?.text || '').match(/\{\{[^}]+\}\}/g) || [];
+  vars.forEach((token, i) => addField(`Body ${token}`, `body-${i}`, saved.bodyVariables?.[i]));
+  (components.find(c => c.type === 'BUTTONS')?.buttons || []).forEach(button => {
+    if (button.type === 'URL' && /\{\{1\}\}/.test(button.url || '')) addField(`URL button ${button.index} value`, `url-${button.index}`, saved.urlButtonValues?.[String(button.index)] || saved.urlButtonValue);
+    if (button.type === 'QUICK_REPLY') addField(`Quick reply ${button.index} payload`, `quick-${button.index}`, saved.quickReplyPayloads?.[String(button.index)] || saved.quickReplyPayloads?.[button.index]);
   });
-  variablesContainer.appendChild(row);
-  updateLivePreview();
 }
 
-function reindexVariables() {
-  Array.from(variablesContainer.children).forEach((row, i) => {
-    row.querySelector('.var-tag').textContent = `{{${i + 1}}}`;
-    row.querySelector('.var-input').placeholder = `Variable {{${i + 1}}} value`;
-  });
-}
-
-btnAddVariable.addEventListener('click', () => addVariableRow());
 
 // --- LIVE PREVIEW ---
 function updateLivePreview() {
@@ -405,7 +394,7 @@ function updateLivePreview() {
   let rawBody = TEMPLATE_PREVIEWS[selectedTpl?.name] || 'Hello! Thank you for contacting us.';
 
   // Substitute variables
-  const varInputs = Array.from(variablesContainer.querySelectorAll('.var-input'));
+  const varInputs = Array.from(templateFields.querySelectorAll('[data-campaign-key^="body-"]'));
   varInputs.forEach((inp, i) => {
     const val = inp.value.trim() || `[Variable {{${i + 1}}}]`;
     rawBody = rawBody.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), val);
@@ -414,7 +403,7 @@ function updateLivePreview() {
   previewText.textContent = rawBody;
 
   // Header Image
-  const imgUrl = headerImageUrlInput.value.trim();
+  const imgUrl = templateFields.querySelector('[data-campaign-key="headerImageUrl"]')?.value.trim() || '';
   if (imgUrl) {
     previewImg.src = imgUrl;
     previewImg.style.display = 'block';
@@ -424,7 +413,7 @@ function updateLivePreview() {
 
   // Action Buttons
   previewActions.innerHTML = '';
-  const urlVal = urlButtonValueInput.value.trim();
+  const urlVal = templateFields.querySelector('[data-campaign-key^="url-"]')?.value.trim() || '';
   if (urlVal) {
     const btn = document.createElement('div');
     btn.className = 'preview-btn';
@@ -432,56 +421,24 @@ function updateLivePreview() {
     previewActions.appendChild(btn);
   }
 
-  const qr0 = qrPayload0Input.value.trim();
-  const qr1 = qrPayload1Input.value.trim();
-  if (qr0) {
+  templateFields.querySelectorAll('[data-campaign-key^="quick-"]').forEach(input => {
+    if (!input.value.trim()) return;
     const btn = document.createElement('div');
     btn.className = 'preview-btn';
-    btn.innerHTML = `↩ ${qr0}`;
+    btn.innerHTML = `↩ ${input.value.trim()}`;
     previewActions.appendChild(btn);
-  }
-  if (qr1) {
-    const btn = document.createElement('div');
-    btn.className = 'preview-btn';
-    btn.innerHTML = `↩ ${qr1}`;
-    previewActions.appendChild(btn);
-  }
+  });
 }
 
-templateSelect.addEventListener('change', () => {
+templateSelect.addEventListener('change', async () => {
   const template = selectedTemplate();
   languageCodeInput.value = template?.language || '';
+  try { await loadTemplateDefinition(); } catch (err) { showAlert(err.message, 'danger'); }
   updateLivePreview();
 });
-headerImageUrlInput.addEventListener('input', updateLivePreview);
-urlButtonValueInput.addEventListener('input', updateLivePreview);
-qrPayload0Input.addEventListener('input', updateLivePreview);
-qrPayload1Input.addEventListener('input', updateLivePreview);
+templateFields.addEventListener('input', updateLivePreview);
 
 // --- FILE UPLOADS ---
-btnUploadHeaderImg.addEventListener('click', () => headerImageFileInput.click());
-headerImageFileInput.addEventListener('change', async () => {
-  const file = headerImageFileInput.files[0];
-  if (!file) return;
-
-  const formData = new FormData();
-  formData.append('image', file);
-
-  btnUploadHeaderImg.textContent = 'Uploading...';
-  try {
-    const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Upload failed');
-    headerImageUrlInput.value = data.url;
-    updateLivePreview();
-    showAlert('Header image uploaded successfully!');
-  } catch (err) {
-    showAlert('Image upload failed: ' + err.message, 'danger');
-  } finally {
-    btnUploadHeaderImg.textContent = 'Upload';
-  }
-});
-
 btnUploadReplyImg.addEventListener('click', () => autoReplyImageFile.click());
 autoReplyImageFile.addEventListener('change', async () => {
   const file = autoReplyImageFile.files[0];
@@ -594,23 +551,31 @@ radioCards.forEach(card => {
 // --- SAVE CAMPAIGN FORM ---
 function getCampaignFormSettings() {
   const template = selectedTemplate();
-  if (!template) return null;
-  const varInputs = Array.from(variablesContainer.querySelectorAll('.var-input'));
-  const bodyVariables = varInputs.map(input => input.value.trim()).filter(Boolean);
-  const quickReplyPayloads = [qrPayload0Input.value.trim(), qrPayload1Input.value.trim()].filter(Boolean);
+  if (!template || !selectedDefinition) return null;
+  const values = Object.fromEntries(Array.from(templateFields.querySelectorAll('[data-campaign-key]'), el => [el.dataset.campaignKey, cleanCampaignValue(el.value)]));
+  const requiredEmpty = Array.from(templateFields.querySelectorAll('[required]')).find(el => !values[el.dataset.campaignKey]);
+  if (requiredEmpty) { requiredEmpty.focus(); throw new Error('Please fill in every required template value.'); }
+  if (values.headerImageUrl && !/^https:\/\//i.test(values.headerImageUrl)) throw new Error('Header media must use a public HTTPS URL.');
+  const bodyVariables = (selectedDefinition.components.find(c => c.type === 'BODY')?.text || '').match(/\{\{[^}]+\}\}/g) || [];
+  const urlButtonValues = {};
+  const quickReplyPayloads = {};
+  for (const button of selectedDefinition.components.find(c => c.type === 'BUTTONS')?.buttons || []) {
+    if (button.type === 'URL' && /\{\{1\}\}/.test(button.url || '')) urlButtonValues[String(button.index)] = values[`url-${button.index}`];
+    if (button.type === 'QUICK_REPLY') quickReplyPayloads[String(button.index)] = values[`quick-${button.index}`];
+  }
   return {
     template: template.name,
     languageCode: template.language,
-    headerImageUrl: headerImageUrlInput.value.trim(),
-    bodyVariables,
-    urlButtonValue: urlButtonValueInput.value.trim(),
-    quickReplyPayloads
+    headerImageUrl: values.headerImageUrl || '', headerText: values.headerText || '',
+    bodyVariables: bodyVariables.map((_, i) => values[`body-${i}`]),
+    urlButtonValues, quickReplyPayloads
   };
 }
 
 campaignForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const updatedCampaign = getCampaignFormSettings();
+  let updatedCampaign;
+  try { updatedCampaign = getCampaignFormSettings(); } catch (err) { return showAlert(err.message, 'danger'); }
   if (!updatedCampaign) return showAlert('Select an approved Meta template and language first.', 'danger');
 
   try {
@@ -703,7 +668,8 @@ btnSendCampaign.addEventListener('click', () => {
 btnModalCancel.addEventListener('click', () => confirmModal.classList.remove('active'));
 
 btnModalConfirm.addEventListener('click', async () => {
-  const campaign = getCampaignFormSettings();
+  let campaign;
+  try { campaign = getCampaignFormSettings(); } catch (err) { confirmModal.classList.remove('active'); return showAlert(err.message, 'danger'); }
   if (!campaign) return showAlert('Select an approved Meta template and language first.', 'danger');
   confirmModal.classList.remove('active');
   btnSendCampaign.disabled = true;
@@ -720,7 +686,7 @@ btnModalConfirm.addEventListener('click', async () => {
     btnSendCampaign.disabled = false;
     btnSendCampaign.textContent = '🚀 Send Campaign Now';
 
-    if (!res.ok) throw new Error(data.error || 'Failed to dispatch campaign');
+    if (!res.ok) throw new Error(`${data.metaCode !== undefined ? `Meta error ${data.metaCode}: ` : ''}${data.error || 'Failed to dispatch campaign'}${data.errorDataDetails ? `\n${data.errorDataDetails}` : ''}\nSent JSON payload: ${JSON.stringify(data.payload || {})}`);
 
     // Display Summary
     resultsCard.style.display = 'block';

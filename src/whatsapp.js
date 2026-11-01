@@ -36,6 +36,28 @@ export async function getApprovedMessageTemplates() {
   return templates;
 }
 
+export async function getMessageTemplateDefinition(name, language) {
+  const accessToken = process.env.ACCESS_TOKEN;
+  const wabaId = process.env.WABA_ID;
+  if (!accessToken || !wabaId) throw new Error('ACCESS_TOKEN and WABA_ID must be set in environment variables');
+  const url = new URL(`https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(wabaId)}/message_templates`);
+  url.searchParams.set('name', name);
+  url.searchParams.set('fields', 'name,language,status,components');
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw metaError(data, response);
+  const definition = (data.data || []).find(t => t.name === name && (!language || t.language === language));
+  if (!definition) throw new Error(`Meta template definition not found: ${name}${language ? ` (${language})` : ''}`);
+  return definition;
+}
+
+function metaError(data, response) {
+  const error = new Error(data?.error?.message || `HTTP ${response.status} ${response.statusText}`);
+  error.metaCode = data?.error?.code;
+  error.errorDataDetails = data?.error?.error_data?.details;
+  return error;
+}
+
 /**
  * Base Meta Graph API request dispatcher.
  */
@@ -62,8 +84,9 @@ async function callMetaGraphApi(payload) {
 
   if (!response.ok) {
     const errorDetails = data?.error?.message || `HTTP ${response.status} ${response.statusText}`;
-    const error = new Error(errorDetails);
-    error.metaCode = data?.error?.code;
+    const error = metaError(data, response);
+    error.message = errorDetails;
+    error.payload = payload;
     throw error;
   }
 
@@ -78,78 +101,45 @@ export async function sendTemplateMessage({
   templateName,
   languageCode,
   headerImageUrl = '',
+  headerText = '',
   bodyVariables = [],
   urlButtonValue = '',
-  quickReplyPayloads = []
+  urlButtonValues = {},
+  quickReplyPayloads = [],
+  templateDefinition
 }) {
   if (typeof templateName !== 'string' || !templateName || typeof languageCode !== 'string' || !languageCode) {
     throw new Error('An exact Meta template name and language code are required.');
   }
+  if (!templateDefinition) templateDefinition = await getMessageTemplateDefinition(templateName, languageCode);
+  const definitions = templateDefinition.components || [];
+  const clean = value => String(value ?? '').trim().replace(/[\r\n\t]+/g, ' ').replace(/ {4,}/g, ' ');
   const components = [];
-
-  // 1. Header image
-  if (headerImageUrl && headerImageUrl.trim().startsWith('http')) {
-    components.push({
-      type: 'header',
-      parameters: [
-        {
-          type: 'image',
-          image: { link: headerImageUrl.trim() }
-        }
-      ]
-    });
-  }
-
-  // 2. Body variables {{1}}, {{2}}...
-  if (Array.isArray(bodyVariables) && bodyVariables.length > 0) {
-    const params = bodyVariables
-      .filter(v => v !== undefined && v !== null && String(v).trim() !== '')
-      .map(v => ({
-        type: 'text',
-        text: String(v).trim()
-      }));
-
-    if (params.length > 0) {
-      components.push({
-        type: 'body',
-        parameters: params
-      });
+  const header = definitions.find(c => c.type === 'HEADER');
+  const headerFormat = header?.format;
+  const headerVars = (header?.text || '').match(/\{\{[^}]+\}\}/g) || [];
+  if (header && (headerFormat !== 'TEXT' || headerVars.length)) {
+    if (headerFormat === 'TEXT') components.push({ type: 'header', parameters: [{ type: 'text', text: clean(headerText) }] });
+    else {
+      const mediaUrl = clean(headerImageUrl);
+      if (!/^https:\/\//i.test(mediaUrl)) throw new Error('Header media must use a public HTTPS URL.');
+      components.push({ type: 'header', parameters: [{ type: headerFormat.toLowerCase(), [headerFormat.toLowerCase()]: { link: mediaUrl } }] });
     }
   }
-
-  // 3. Dynamic URL button
-  if (urlButtonValue && String(urlButtonValue).trim() !== '') {
-    components.push({
-      type: 'button',
-      sub_type: 'url',
-      index: '0',
-      parameters: [
-        {
-          type: 'text',
-          text: String(urlButtonValue).trim()
-        }
-      ]
-    });
+  const body = definitions.find(c => c.type === 'BODY');
+  const bodyMatches = (body?.text || '').match(/\{\{[^}]+\}\}/g) || [];
+  if (bodyMatches.length) {
+    if (bodyMatches.some((_, i) => !clean(bodyVariables[i]))) throw new Error('Every body template variable is required.');
+    const params = bodyMatches.map((token, i) => ({ type: 'text', text: clean(bodyVariables[i]), ...(bodyMatches.some(v => !/^\{\{\d+\}\}$/.test(v)) ? { parameter_name: token.slice(2, -2) } : {}) }));
+    components.push({ type: 'body', parameters: params });
   }
-
-  // 4. Quick reply button payloads
-  if (Array.isArray(quickReplyPayloads) && quickReplyPayloads.length > 0) {
-    quickReplyPayloads.forEach((payload, index) => {
-      if (payload && String(payload).trim() !== '') {
-        components.push({
-          type: 'button',
-          sub_type: 'quick_reply',
-          index: String(index),
-          parameters: [
-            {
-              type: 'payload',
-              payload: String(payload).trim()
-            }
-          ]
-        });
-      }
-    });
-  }
+  (definitions.find(c => c.type === 'BUTTONS')?.buttons || []).forEach(button => {
+    const value = button.type === 'URL' && /\{\{1\}\}/.test(button.url || '') ? (urlButtonValues?.[String(button.index)] ?? urlButtonValue) : button.type === 'QUICK_REPLY' ? quickReplyPayloads?.[String(button.index)] : null;
+    if (value !== undefined && value !== null) {
+      if (!clean(value)) throw new Error(`Template button ${button.index} value is required.`);
+      components.push({ type: 'button', sub_type: button.type === 'URL' ? 'url' : 'quick_reply', index: String(button.index), parameters: [button.type === 'URL' ? { type: 'text', text: clean(value) } : { type: 'payload', payload: clean(value) }] });
+    }
+  });
 
   const payload = {
     messaging_product: 'whatsapp',
