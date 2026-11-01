@@ -193,6 +193,7 @@ app.post('/webhook', (req, res) => {
           const statusDetail = `Meta status ${statusName}${errorDetail ? ` · errors: ${errorDetail}` : ''} · message ID: ${status.id || 'unknown'}`;
           db.prepare(`INSERT INTO message_statuses(message_id, phone, status, details, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(message_id) DO UPDATE SET status=excluded.status, details=excluded.details, updated_at=excluded.updated_at`).run(String(status.id || ''), String(status.recipient_id || ''), statusName, statusDetail, new Date().toISOString());
           if (status.id) db.prepare('UPDATE outbound_messages SET status=?, failure_reason=? WHERE message_id=?').run(statusName, statusName === 'failed' ? errorDetail : null, String(status.id));
+          if (status.id && statusName === 'failed') db.prepare("UPDATE sent_numbers SET status='failed', error=? WHERE message_id=?").run(statusDetail, String(status.id));
           const matchedSend = status.id ? (db.prepare('SELECT phone FROM outbound_messages WHERE message_id=?').get(String(status.id)) || db.prepare('SELECT phone FROM sent_numbers WHERE message_id=?').get(String(status.id))) : null;
           const statusAction = ['sent', 'delivered', 'read', 'failed'].includes(statusName) ? statusName : 'webhook';
           if (status.id && statusAction !== 'webhook') updateLogForMessageStatus(status.id, statusAction, statusDetail);
