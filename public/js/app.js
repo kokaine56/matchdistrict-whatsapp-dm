@@ -1010,23 +1010,28 @@ function renderFilteredRecipients() {
 
   filtered.forEach((r, idx) => {
     const tr = document.createElement('tr');
+    tr.className = 'recipient-row';
 
     const indexCell = document.createElement('td');
+    indexCell.className = 'col-index';
     indexCell.textContent = String(idx + 1);
     indexCell.style.color = 'var(--text-muted)';
 
     const phoneCell = document.createElement('td');
+    phoneCell.className = 'col-phone';
     const strong = document.createElement('strong');
     strong.textContent = r.phone;
     phoneCell.append(strong);
 
     const statusCell = document.createElement('td');
+    statusCell.className = 'col-status';
     const badge = document.createElement('span');
     badge.className = `badge-tag ${r.optedIn ? 'badge-success' : 'badge-danger'}`;
     badge.textContent = r.optedIn ? 'Opted In ✓' : 'Opted Out ✗';
     statusCell.append(badge);
 
     const toggleCell = document.createElement('td');
+    toggleCell.className = 'col-toggle';
     toggleCell.style.textAlign = 'right';
     const toggle = document.createElement('button');
     toggle.type = 'button';
