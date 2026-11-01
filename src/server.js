@@ -75,16 +75,21 @@ app.get('/webhook', (req, res) => {
 });
 
 // Middleware
+app.use('/webhook', express.json({
+  limit: '3mb',
+  verify: (req, res, buf) => { req.rawBody = buf; }
+}));
 app.use(express.json({
   limit: '3mb',
-  verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); }
+  type: req => req.path.replace(/\/+$/, '') !== '/webhook'
 }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use((err, req, res, next) => {
-  if (req.path === '/webhook') {
+  if (req.path.replace(/\/+$/, '') === '/webhook') {
     const size = req.rawBody?.length || 0;
     addLog({ action: 'webhook', details: `Incoming POST /webhook · event type: malformed JSON · size: ${size} bytes` });
+    if (!getMetaAppSecret()) addLog({ action: 'webhook', details: 'META_APP_SECRET not set' });
     return res.sendStatus(200);
   }
   return next(err);
@@ -113,14 +118,28 @@ function fullSendError(err) {
   return `Meta error ${err.metaCode ?? 'unknown'}: ${err.message}${err.errorDataDetails ? `\nerror_data.details: ${err.errorDataDetails}` : ''}\nJSON payload sent: ${JSON.stringify(err.payload || {})}`;
 }
 
+function getMetaAppSecret() {
+  let secret = String(process.env.META_APP_SECRET || '').trim();
+  while ((secret.startsWith('"') && secret.endsWith('"')) || (secret.startsWith("'") && secret.endsWith("'"))) {
+    secret = secret.slice(1, -1).trim();
+  }
+  if (!secret || /^(your[_ -]?.*|<.*>|\{.*\}|replace[_ -]?.*|placeholder|change.?me|meta_app_secret)$/i.test(secret)) return '';
+  return secret;
+}
+
+function verifyMetaSignature(req, secret) {
+  const received = String(req.get('x-hub-signature-256') || '');
+  const computed = `sha256=${createHmac('sha256', secret).update(req.rawBody).digest('hex')}`;
+  const receivedBytes = Buffer.from(received, 'utf8');
+  const computedBytes = Buffer.from(computed, 'utf8');
+  const sameLength = receivedBytes.length === computedBytes.length;
+  return { valid: sameLength && timingSafeEqual(receivedBytes, computedBytes), received, computed, sameLength };
+}
+
 function hasValidMetaSignature(req) {
-  const secret = process.env.META_APP_SECRET;
-  const signature = req.get('x-hub-signature-256');
-  if (!secret || !signature || !req.rawBody || !/^sha256=[a-f0-9]{64}$/i.test(signature)) return false;
-  const expected = `sha256=${createHmac('sha256', secret).update(req.rawBody).digest('hex')}`;
-  const suppliedBytes = Buffer.from(signature, 'utf8');
-  const expectedBytes = Buffer.from(expected, 'utf8');
-  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
+  const secret = getMetaAppSecret();
+  if (!secret || !Buffer.isBuffer(req.rawBody)) return false;
+  return verifyMetaSignature(req, secret).valid;
 }
 
 // Webhook Receiver (POST /webhook)
@@ -135,9 +154,16 @@ app.post('/webhook', (req, res) => {
   const eventType = [...new Set(eventTypes)].join(',') || String(body?.object || 'unknown');
   const bodySize = req.rawBody?.length || 0;
   addLog({ action: 'webhook', details: `Incoming POST /webhook · event type: ${eventType} · size: ${bodySize} bytes` });
-  const signatureConfigured = Boolean(String(process.env.META_APP_SECRET || '').trim());
-  if (signatureConfigured && !hasValidMetaSignature(req)) {
-    addLog({ action: 'signature_mismatch', details: `signature mismatch · event type: ${eventType} · size: ${bodySize} bytes` });
+  const metaAppSecret = getMetaAppSecret();
+  if (!metaAppSecret) {
+    addLog({ action: 'webhook', details: 'META_APP_SECRET not set' });
+    return res.sendStatus(200);
+  }
+  const verification = Buffer.isBuffer(req.rawBody) ? verifyMetaSignature(req, metaAppSecret) : { valid: false, received: '', computed: '', sameLength: false };
+  if (!verification.valid) {
+    const receivedHex = verification.received.startsWith('sha256=') ? verification.received.slice(7) : verification.received;
+    const computedHex = verification.computed.startsWith('sha256=') ? verification.computed.slice(7) : verification.computed;
+    addLog({ action: 'signature_mismatch', details: `signature mismatch · received: ${receivedHex.slice(0, 6) || '(empty)'} · computed: ${computedHex.slice(0, 6)} · secret length: ${Buffer.byteLength(metaAppSecret)}` });
     return res.sendStatus(200);
   }
   // Acknowledge promptly; processing continues after the response.
