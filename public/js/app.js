@@ -114,6 +114,8 @@ const buttonReplyFields = document.getElementById('buttonReplyFields');
 const linkReplyFields = document.getElementById('linkReplyFields');
 const linkTitleInput = document.getElementById('linkTitle');
 const linkUrlInput = document.getElementById('linkUrl');
+const autoReplyPreviewText = document.getElementById('autoReplyPreviewText');
+const autoReplyPreviewBtnLabel = document.getElementById('autoReplyPreviewBtnLabel');
 
 // Send Campaign Elements
 const sendSummaryTemplate = document.getElementById('sendSummaryTemplate');
@@ -850,105 +852,65 @@ if (autoReplyToggle) {
   });
 }
 
-function setReplyType(type) {
-  radioCards.forEach(card => {
-    const isTarget = card.dataset.type === type;
-    card.classList.toggle('active', isTarget);
-    const input = card.querySelector('input');
-    if (input) input.checked = isTarget;
-  });
+const DEFAULT_AUTOREPLY_TEXT = 'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.';
+const DEFAULT_AUTOREPLY_BUTTON_TEXT = 'Discord';
+const DEFAULT_AUTOREPLY_BUTTON_URL = 'https://discord.gg/zMVN8ZmqTP';
 
-  if (imageReplyFields) imageReplyFields.style.display = type === 'image' ? 'block' : 'none';
-  if (buttonReplyFields) buttonReplyFields.style.display = type === 'buttons' ? 'block' : 'none';
-  if (linkReplyFields) linkReplyFields.style.display = type === 'link' ? 'block' : 'none';
+function updateAutoReplyPreview() {
+  if (autoReplyPreviewText) {
+    const textVal = autoReplyText ? autoReplyText.value.trim() : '';
+    autoReplyPreviewText.textContent = textVal || DEFAULT_AUTOREPLY_TEXT;
+  }
+  if (autoReplyPreviewBtnLabel) {
+    const titleVal = linkTitleInput ? linkTitleInput.value.trim() : '';
+    autoReplyPreviewBtnLabel.textContent = titleVal || DEFAULT_AUTOREPLY_BUTTON_TEXT;
+  }
 }
 
-radioCards.forEach(card => {
-  card.addEventListener('click', () => {
-    setReplyType(card.dataset.type);
-  });
-});
+if (autoReplyText) autoReplyText.addEventListener('input', updateAutoReplyPreview);
+if (linkTitleInput) linkTitleInput.addEventListener('input', updateAutoReplyPreview);
 
-if (btnUploadReplyImg && autoReplyImageFile) {
-  btnUploadReplyImg.addEventListener('click', () => autoReplyImageFile.click());
-  autoReplyImageFile.addEventListener('change', async () => {
-    const file = autoReplyImageFile.files[0];
-    if (!file) return;
+function setReplyType(type) {
+  // Auto-reply format is locked to CTA Link Button
+}
 
-    const formData = new FormData();
-    formData.append('image', file);
-    btnUploadReplyImg.textContent = 'Uploading...';
+if (autoReplyForm) {
+  autoReplyForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const textVal = autoReplyText ? autoReplyText.value.trim() : '';
+    const linkTitle = linkTitleInput ? linkTitleInput.value.trim() : '';
+    const linkUrl = linkUrlInput ? linkUrlInput.value.trim() : '';
+
+    const updatedAutoReply = {
+      type: 'link',
+      text: textVal || DEFAULT_AUTOREPLY_TEXT,
+      imageUrl: '',
+      caption: '',
+      buttons: [],
+      link: {
+        title: linkTitle || DEFAULT_AUTOREPLY_BUTTON_TEXT,
+        url: linkUrl || DEFAULT_AUTOREPLY_BUTTON_URL
+      }
+    };
 
     try {
-      const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoReply: updatedAutoReply })
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-      autoReplyImageUrl.value = data.url;
-      showToast('Reply image uploaded successfully!');
+      if (res.status === 401) return (window.location.href = '/login');
+      if (!res.ok) throw new Error(data.error || 'Failed to save settings');
+      currentConfig = data.config || currentConfig;
+      showToast('Auto-reply rules saved successfully!');
+      updateAutoReplyPreview();
     } catch (err) {
-      showToast('Image upload failed: ' + err.message, 'danger');
-    } finally {
-      btnUploadReplyImg.textContent = 'Upload File';
+      showToast('Save failed: ' + err.message, 'danger');
     }
   });
 }
-
-autoReplyForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const selectedCard = document.querySelector('.radio-card.active');
-  const type = selectedCard ? selectedCard.dataset.type : 'text';
-
-  const buttons = [];
-  const b1Title = document.getElementById('btn1_title')?.value.trim();
-  if (b1Title) {
-    buttons.push({
-      id: document.getElementById('btn1_id')?.value.trim() || 'btn_1',
-      title: b1Title,
-      reply: document.getElementById('btn1_reply')?.value.trim() || ''
-    });
-  }
-  const b2Title = document.getElementById('btn2_title')?.value.trim();
-  if (b2Title) {
-    buttons.push({
-      id: document.getElementById('btn2_id')?.value.trim() || 'btn_2',
-      title: b2Title,
-      reply: document.getElementById('btn2_reply')?.value.trim() || ''
-    });
-  }
-  const b3Title = document.getElementById('btn3_title')?.value.trim();
-  if (b3Title) {
-    buttons.push({
-      id: document.getElementById('btn3_id')?.value.trim() || 'btn_3',
-      title: b3Title,
-      reply: document.getElementById('btn3_reply')?.value.trim() || ''
-    });
-  }
-
-  const updatedAutoReply = {
-    type,
-    text: autoReplyText.value.trim(),
-    imageUrl: autoReplyImageUrl?.value.trim() || '',
-    caption: autoReplyCaption?.value.trim() || '',
-    buttons,
-    link: {
-      title: linkTitleInput?.value.trim() || '',
-      url: linkUrlInput?.value.trim() || ''
-    }
-  };
-
-  try {
-    const res = await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ autoReply: updatedAutoReply })
-    });
-    if (!res.ok) throw new Error('Failed to save settings');
-    showToast('Auto-reply rules saved successfully!');
-  } catch (err) {
-    showToast('Save failed: ' + err.message, 'danger');
-  }
-});
 
 // ==========================================
 // Recipients Controller (Search, Filter, Consent)
@@ -1591,42 +1553,10 @@ async function loadConfig() {
 
     // Populate Auto-Reply
     const ar = currentConfig.autoReply || {};
-    setReplyType(ar.type || 'text');
-    if (autoReplyText) autoReplyText.value = ar.text || '';
-    if (autoReplyImageUrl) autoReplyImageUrl.value = ar.imageUrl || '';
-    if (autoReplyCaption) autoReplyCaption.value = ar.caption || '';
-
-    if (ar.buttons?.[0]) {
-      const b1Id = document.getElementById('btn1_id');
-      const b1Title = document.getElementById('btn1_title');
-      const b1Reply = document.getElementById('btn1_reply');
-      if (b1Id) b1Id.value = ar.buttons[0].id || 'btn_1';
-      if (b1Title) b1Title.value = ar.buttons[0].title || '';
-      if (b1Reply) b1Reply.value = ar.buttons[0].reply || '';
-    }
-
-    if (ar.buttons?.[1]) {
-      const b2Id = document.getElementById('btn2_id');
-      const b2Title = document.getElementById('btn2_title');
-      const b2Reply = document.getElementById('btn2_reply');
-      if (b2Id) b2Id.value = ar.buttons[1].id || 'btn_2';
-      if (b2Title) b2Title.value = ar.buttons[1].title || '';
-      if (b2Reply) b2Reply.value = ar.buttons[1].reply || '';
-    }
-
-    if (ar.buttons?.[2]) {
-      const b3Id = document.getElementById('btn3_id');
-      const b3Title = document.getElementById('btn3_title');
-      const b3Reply = document.getElementById('btn3_reply');
-      if (b3Id) b3Id.value = ar.buttons[2].id || 'btn_3';
-      if (b3Title) b3Title.value = ar.buttons[2].title || '';
-      if (b3Reply) b3Reply.value = ar.buttons[2].reply || '';
-    }
-
-    if (ar.link) {
-      if (linkTitleInput) linkTitleInput.value = ar.link.title || '';
-      if (linkUrlInput) linkUrlInput.value = ar.link.url || '';
-    }
+    if (autoReplyText) autoReplyText.value = ar.text || DEFAULT_AUTOREPLY_TEXT;
+    if (linkTitleInput) linkTitleInput.value = (ar.link && ar.link.title) ? ar.link.title : DEFAULT_AUTOREPLY_BUTTON_TEXT;
+    if (linkUrlInput) linkUrlInput.value = (ar.link && ar.link.url) ? ar.link.url : DEFAULT_AUTOREPLY_BUTTON_URL;
+    updateAutoReplyPreview();
   } catch (err) {
     console.error('[loadConfig error]', err);
   }

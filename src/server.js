@@ -551,10 +551,20 @@ app.post('/api/database/import', requireAuth, uploadDb.single('database'), (req,
 app.post('/api/config', requireAuth, async (req, res) => {
   try {
     const current = await loadConfig();
+    const updatedAutoReply = req.body.autoReply ? {
+      ...current.autoReply,
+      ...req.body.autoReply,
+      type: 'link',
+      link: {
+        ...current.autoReply.link,
+        ...(req.body.autoReply.link || {})
+      }
+    } : current.autoReply;
+
     const updated = {
       autoReplyEnabled: typeof req.body.autoReplyEnabled === 'boolean' ? req.body.autoReplyEnabled : current.autoReplyEnabled,
       campaign: { ...current.campaign, ...(req.body.campaign || {}) },
-      autoReply: { ...current.autoReply, ...(req.body.autoReply || {}) }
+      autoReply: updatedAutoReply
     };
     await saveConfig(updated);
     res.json({ status: 'ok', config: updated });

@@ -18,17 +18,14 @@ const DEFAULT_CONFIG = {
     headers: {}
   },
   autoReply: {
-    type: 'text',
-    text: 'Hello! Thank you for reaching out. We will get back to you shortly.',
+    type: 'link',
+    text: 'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.',
     imageUrl: '',
     caption: '',
-    buttons: [
-      { id: 'btn_1', title: 'Option 1', reply: 'Thank you for selecting Option 1!' },
-      { id: 'btn_2', title: 'Option 2', reply: 'Thank you for selecting Option 2!' }
-    ],
+    buttons: [],
     link: {
-      title: 'Visit Website',
-      url: 'https://matchdistrict.com'
+      title: 'Discord',
+      url: 'https://discord.gg/zMVN8ZmqTP'
     }
   }
 };
@@ -37,10 +34,20 @@ export async function loadConfig() {
   try {
     const raw = await fs.readFile(CONFIG_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
+    const parsedAutoReply = parsed.autoReply || {};
     return {
       autoReplyEnabled: parsed.autoReplyEnabled !== false,
       campaign: { ...DEFAULT_CONFIG.campaign, ...(parsed.campaign || {}) },
-      autoReply: { ...DEFAULT_CONFIG.autoReply, ...(parsed.autoReply || {}) }
+      autoReply: {
+        ...DEFAULT_CONFIG.autoReply,
+        ...parsedAutoReply,
+        type: 'link',
+        text: parsedAutoReply.text || DEFAULT_CONFIG.autoReply.text,
+        link: {
+          ...DEFAULT_CONFIG.autoReply.link,
+          ...(parsedAutoReply.link || {})
+        }
+      }
     };
   } catch (err) {
     if (err.code === 'ENOENT') {

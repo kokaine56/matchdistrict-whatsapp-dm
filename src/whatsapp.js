@@ -256,12 +256,40 @@ function isMediaSendError(err) {
 
 /**
  * Send auto-reply message based on configured type (text, image, buttons, link).
+ * Default simplified format is interactive CTA Link Button.
  */
 export async function sendConfiguredAutoReply({ to, autoReplyConfig }) {
   const config = autoReplyConfig || {};
-  const type = config.type || 'text';
+  const type = config.type || 'link';
 
-  // 1. Image with Caption
+  // 1. CTA Link Button (Primary)
+  if (type === 'link' || (!type && config.link?.url)) {
+    const linkUrl = config.link?.url || 'https://discord.gg/zMVN8ZmqTP';
+    const linkTitle = config.link?.title || 'Discord';
+    const messageText = config.text || 'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.';
+
+    return callMetaGraphApi({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: {
+          text: messageText
+        },
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: linkTitle.slice(0, 20),
+            url: linkUrl
+          }
+        }
+      }
+    });
+  }
+
+  // 2. Image with Caption (Legacy fallback)
   if (type === 'image' && config.imageUrl) {
     return callMetaGraphApi({
       messaging_product: 'whatsapp',
@@ -275,7 +303,7 @@ export async function sendConfiguredAutoReply({ to, autoReplyConfig }) {
     });
   }
 
-  // 2. Interactive Reply Buttons (up to 3)
+  // 3. Interactive Reply Buttons (Legacy fallback)
   if (type === 'buttons' && Array.isArray(config.buttons) && config.buttons.length > 0) {
     const validButtons = config.buttons.slice(0, 3).map((btn, i) => ({
       type: 'reply',
@@ -302,29 +330,6 @@ export async function sendConfiguredAutoReply({ to, autoReplyConfig }) {
     });
   }
 
-  // 3. CTA Link Button
-  if (type === 'link' && config.link?.url) {
-    return callMetaGraphApi({
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to,
-      type: 'interactive',
-      interactive: {
-        type: 'cta_url',
-        body: {
-          text: config.text || 'Check out our link below:'
-        },
-        action: {
-          name: 'cta_url',
-          parameters: {
-            display_text: (config.link.title || 'Open Link').slice(0, 20),
-            url: config.link.url
-          }
-        }
-      }
-    });
-  }
-
   // 4. Default: Standard text reply
   return callMetaGraphApi({
     messaging_product: 'whatsapp',
@@ -333,7 +338,7 @@ export async function sendConfiguredAutoReply({ to, autoReplyConfig }) {
     type: 'text',
     text: {
       preview_url: false,
-      body: config.text || 'Hello! Thank you for reaching out.'
+      body: config.text || 'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.'
     }
   });
 }
