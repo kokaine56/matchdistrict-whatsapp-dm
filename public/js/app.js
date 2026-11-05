@@ -852,14 +852,14 @@ if (autoReplyToggle) {
   });
 }
 
-const DEFAULT_AUTOREPLY_TEXT = 'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.';
+const DEFAULT_AUTOREPLY_TEXT = "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District";
 const DEFAULT_AUTOREPLY_BUTTON_TEXT = 'Discord';
 const DEFAULT_AUTOREPLY_BUTTON_URL = 'https://discord.gg/zMVN8ZmqTP';
 
 function updateAutoReplyPreview() {
   if (autoReplyPreviewText) {
-    const textVal = autoReplyText ? autoReplyText.value.trim() : '';
-    autoReplyPreviewText.textContent = textVal || DEFAULT_AUTOREPLY_TEXT;
+    const textVal = autoReplyText ? autoReplyText.value : '';
+    autoReplyPreviewText.textContent = textVal.trim() ? textVal : DEFAULT_AUTOREPLY_TEXT;
   }
   if (autoReplyPreviewBtnLabel) {
     const titleVal = linkTitleInput ? linkTitleInput.value.trim() : '';

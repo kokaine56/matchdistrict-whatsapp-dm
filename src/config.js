@@ -19,7 +19,7 @@ const DEFAULT_CONFIG = {
   },
   autoReply: {
     type: 'link',
-    text: 'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.',
+    text: "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District",
     imageUrl: '',
     caption: '',
     buttons: [],

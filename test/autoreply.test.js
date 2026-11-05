@@ -12,7 +12,7 @@ test('loadConfig provides the default CTA Link Button auto-reply configuration',
   assert.equal(config.autoReply.type, 'link');
   assert.equal(
     config.autoReply.text,
-    'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.'
+    "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
   );
   assert.deepEqual(config.autoReply.link, {
     title: 'Discord',
@@ -49,12 +49,27 @@ test('sendConfiguredAutoReply formats the CTA URL payload correctly for Meta Gra
     assert.equal(interceptedPayload.interactive.type, 'cta_url');
     assert.equal(
       interceptedPayload.interactive.body.text,
-      'Hey! Thanks for your interest! Join our Discord server to get started with Match District and participate in BGMI tournaments.'
+      "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
     );
-    assert.equal(interceptedPayload.interactive.action.name, 'cta_url');
-    assert.deepEqual(interceptedPayload.interactive.action.parameters, {
-      display_text: 'Discord',
-      url: 'https://discord.gg/zMVN8ZmqTP'
+    assert.equal(interceptedPayload.interactive.footer, undefined, 'No footer should be sent');
+    assert.deepEqual(interceptedPayload, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: '15551234567',
+      type: 'interactive',
+      interactive: {
+        type: 'cta_url',
+        body: {
+          text: "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
+        },
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: 'Discord',
+            url: 'https://discord.gg/zMVN8ZmqTP'
+          }
+        }
+      }
     });
   } finally {
     globalThis.fetch = originalFetch;
