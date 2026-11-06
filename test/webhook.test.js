@@ -45,3 +45,40 @@ test('POST /webhook accepts a signed status event and acknowledges it', async ()
     assert.equal(response.status, 200);
   });
 });
+
+test('POST /login parses urlencoded form and authenticates admin session', async () => {
+  await withServer(async base => {
+    // 1. Unauthenticated request to / redirects to /login
+    const unauthRes = await fetch(`${base}/`, { redirect: 'manual' });
+    assert.equal(unauthRes.status, 302);
+    assert.equal(unauthRes.headers.get('location'), '/login');
+
+    // 2. Invalid password redirects back to /login?error=invalid
+    const wrongLoginRes = await fetch(`${base}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'password=wrong-password',
+      redirect: 'manual'
+    });
+    assert.equal(wrongLoginRes.status, 302);
+    assert.equal(wrongLoginRes.headers.get('location'), '/login?error=invalid');
+
+    // 3. Valid password sets session cookie and redirects to /
+    const loginRes = await fetch(`${base}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'password=565454',
+      redirect: 'manual'
+    });
+    assert.equal(loginRes.status, 302);
+    assert.equal(loginRes.headers.get('location'), '/');
+    const setCookie = loginRes.headers.get('set-cookie');
+    assert.ok(setCookie && setCookie.includes('wa_admin_session='), 'Should receive session cookie');
+
+    // 4. Authenticated request to / succeeds with 200
+    const authRes = await fetch(`${base}/`, {
+      headers: { Cookie: setCookie.split(';')[0] }
+    });
+    assert.equal(authRes.status, 200);
+  });
+});

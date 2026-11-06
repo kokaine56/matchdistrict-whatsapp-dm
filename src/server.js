@@ -79,10 +79,10 @@ app.use('/webhook', express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; }
 }));
-app.use(express.json({
-  limit: '3mb',
-  type: req => req.path.replace(/\/+$/, '') !== '/webhook'
-}));
+app.use((req, res, next) => {
+  if (req.path.replace(/\/+$/, '') === '/webhook') return next();
+  express.json({ limit: '3mb' })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use((err, req, res, next) => {
