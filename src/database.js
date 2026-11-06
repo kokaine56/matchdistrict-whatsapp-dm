@@ -32,6 +32,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS message_statuses (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS outbound_messages (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL, message_type TEXT NOT NULL DEFAULT '', sent_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'accepted', failure_reason TEXT);
+  CREATE TABLE IF NOT EXISTS auto_replied (phone TEXT NOT NULL UNIQUE, replied_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS incoming_messages (message_id TEXT PRIMARY KEY, phone TEXT NOT NULL DEFAULT '', received_at TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS logs_timestamp_idx ON logs(timestamp DESC);
   CREATE INDEX IF NOT EXISTS sent_numbers_month_idx ON sent_numbers(status, sent_at);
 `);
@@ -102,4 +104,29 @@ export function addLog({ phone = '', action, details = '' }) {
 
 export function getRecentLogs(limit = 200) {
   return db.prepare('SELECT id, timestamp, phone, action, details FROM logs ORDER BY id DESC LIMIT ?').all(Math.min(Math.max(Number(limit) || 200, 1), 1000));
+}
+
+export function reserveAutoReply(phone) {
+  const normalizedPhone = String(phone || '').replace(/\D/g, '');
+  if (!normalizedPhone) throw new Error('A sender phone number is required to reserve an auto-reply.');
+  const repliedAt = new Date().toISOString();
+  const result = db.prepare('INSERT OR IGNORE INTO auto_replied(phone, replied_at) VALUES (?, ?)').run(normalizedPhone, repliedAt);
+  return result.changes === 1 ? repliedAt : null;
+}
+
+export function confirmAutoReply(phone, reservationTime, acceptedAt = new Date().toISOString()) {
+  return db.prepare('UPDATE auto_replied SET replied_at=? WHERE phone=? AND replied_at=?')
+    .run(acceptedAt, String(phone || '').replace(/\D/g, ''), reservationTime).changes === 1;
+}
+
+export function releaseAutoReply(phone, reservationTime) {
+  return db.prepare('DELETE FROM auto_replied WHERE phone=? AND replied_at=?')
+    .run(String(phone || '').replace(/\D/g, ''), reservationTime).changes === 1;
+}
+
+export function markIncomingMessageProcessed(messageId, phone = '') {
+  if (!messageId) return true;
+  const result = db.prepare('INSERT OR IGNORE INTO incoming_messages(message_id, phone, received_at) VALUES (?, ?, ?)')
+    .run(String(messageId), String(phone || '').replace(/\D/g, ''), new Date().toISOString());
+  return result.changes === 1;
 }

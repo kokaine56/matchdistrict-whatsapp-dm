@@ -102,6 +102,7 @@ const previewActions = document.getElementById('previewActions');
 // Auto-Reply Elements
 const autoReplyToggle = document.getElementById('autoReplyToggle');
 const autoReplyToggleLabel = document.getElementById('autoReplyToggleLabel');
+const btnResetAutoReplyMemory = document.getElementById('btnResetAutoReplyMemory');
 const autoReplyForm = document.getElementById('autoReplyForm');
 const radioCards = document.querySelectorAll('.radio-card');
 const autoReplyText = document.getElementById('autoReplyText');
@@ -852,6 +853,25 @@ if (autoReplyToggle) {
   });
 }
 
+if (btnResetAutoReplyMemory) {
+  btnResetAutoReplyMemory.addEventListener('click', async () => {
+    if (!window.confirm('Clear auto-reply memory? Everyone will be eligible to receive the auto-reply again.')) return;
+    btnResetAutoReplyMemory.disabled = true;
+    try {
+      const res = await fetch('/api/auto-reply/reset-memory', { method: 'POST' });
+      const data = await res.json();
+      if (res.status === 401) return (window.location.href = '/login');
+      if (!res.ok) throw new Error(data.error || 'Could not reset auto-reply memory.');
+      showToast(`Auto-reply memory reset. ${data.cleared} number(s) cleared.`);
+      await loadRecipients();
+    } catch (err) {
+      showToast(err.message || 'Could not reset auto-reply memory.', 'danger');
+    } finally {
+      btnResetAutoReplyMemory.disabled = false;
+    }
+  });
+}
+
 const DEFAULT_AUTOREPLY_TEXT = "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District";
 const DEFAULT_AUTOREPLY_BUTTON_TEXT = 'Discord';
 const DEFAULT_AUTOREPLY_BUTTON_URL = 'https://discord.gg/zMVN8ZmqTP';
@@ -996,6 +1016,14 @@ function renderFilteredRecipients() {
     const strong = document.createElement('strong');
     strong.textContent = r.phone;
     phoneCell.append(strong);
+    if (r.autoReplied) {
+      const autoRepliedBadge = document.createElement('span');
+      autoRepliedBadge.className = 'badge-tag badge-neutral';
+      autoRepliedBadge.textContent = 'Auto-replied';
+      autoRepliedBadge.style.marginLeft = '0.5rem';
+      autoRepliedBadge.style.fontSize = '0.625rem';
+      phoneCell.append(autoRepliedBadge);
+    }
 
     const statusCell = document.createElement('td');
     statusCell.className = 'col-status';

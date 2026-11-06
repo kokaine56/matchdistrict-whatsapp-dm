@@ -17,7 +17,7 @@ import {
 import { loadConfig, saveConfig } from './config.js';
 import { runCampaign, getRecipientsSummary, addRecipientsToCsv, updateRecipientOptIn, updateAllRecipientOptIn, normalizeRecipientsCsv, readRecipientsFromCsv, CSV_FILE } from './campaign.js';
 import { getCurrentMonthKey, getMonthlyLimit, getMonthSentCount, isAlreadySentThisMonth, normalizePhone, recordSuccessfulSend, recordFailedSend } from './tracker.js';
-import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents, recordOutboundMessage, updateLogForMessageStatus } from './database.js';
+import { addLog, db, DATABASE_PATH, getRecentLogs, logEvents, recordOutboundMessage, updateLogForMessageStatus, reserveAutoReply, confirmAutoReply, releaseAutoReply, markIncomingMessageProcessed } from './database.js';
 import { getApprovedMessageTemplates, getAllMessageTemplates, getMessageTemplateDefinition, createMessageTemplate, sendTemplateMessage, sendConfiguredAutoReply, sendTextMessage } from './whatsapp.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -208,7 +208,7 @@ app.post('/webhook', (req, res) => {
 
         if (Array.isArray(messages) && messages.length > 0) {
           for (const msg of messages) {
-            if (msg.id && !markEventProcessed(`message:${msg.id}`)) continue;
+            if (msg.id && !markIncomingMessageProcessed(msg.id, msg.from)) continue;
 
             const senderPhone = msg.from;
             const receivedText = msg.text?.body || msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || msg.button?.text || msg.image?.caption || msg.video?.caption || `[${msg.type || 'message'}]`;
@@ -260,17 +260,36 @@ app.post('/webhook', (req, res) => {
 
             // 2. If not handled as button tap, send standard configured auto-reply
             if (!handledAsButtonTap) {
+              let reservationTime;
+              try {
+                reservationTime = reserveAutoReply(senderPhone);
+              } catch (err) {
+                addLog({ phone: senderPhone || '', action: 'failed', details: `Auto-reply failed: ${fullSendError(err)}` });
+                console.error('[Webhook Auto-Reply Error] Could not reserve auto-reply for sender.');
+                continue;
+              }
+              if (!reservationTime) {
+                addLog({ phone: senderPhone || '', action: 'skipped', details: 'Auto-reply skipped (already replied)' });
+                continue;
+              }
+
               console.log('[Webhook] Sending configured auto-reply.');
+              let metaAccepted = false;
               try {
                 // Auto-reply to user response (does NOT count toward 800 cap)
                 const sendResult = await sendConfiguredAutoReply({
                   to: senderPhone,
                   autoReplyConfig
                 });
-                recordOutboundMessage({ phone: senderPhone, messageId: sendResult.messages[0].id, messageType: 'auto-reply' });
-                addLog({ phone: senderPhone, action: 'reply_sent', details: `Auto-reply sent · Meta message ID: ${sendResult.messages[0].id}` });
+                const messageId = sendResult?.messages?.[0]?.id;
+                if (!messageId) throw new Error('Meta accepted no message ID for the auto-reply.');
+                metaAccepted = true;
+                confirmAutoReply(senderPhone, reservationTime);
+                recordOutboundMessage({ phone: senderPhone, messageId, messageType: 'auto-reply' });
+                addLog({ phone: senderPhone, action: 'reply_sent', details: `Auto-reply sent · Meta message ID: ${messageId}` });
                 console.log('[Webhook] Auto-reply sent.');
               } catch (err) {
+                if (!metaAccepted) releaseAutoReply(senderPhone, reservationTime);
                 addLog({ phone: senderPhone, action: 'failed', details: `Auto-reply failed: ${fullSendError(err)}` });
                 console.error('[Webhook Auto-Reply Error] Could not send configured auto-reply.');
               }
@@ -516,8 +535,18 @@ app.post('/api/database/import', requireAuth, uploadDb.single('database'), (req,
     if (!['phone', 'template', 'status', 'sent_at', 'error'].every(col => sentCols.has(col)) || !['id', 'timestamp', 'phone', 'action', 'details'].every(col => logCols.has(col))) {
       return res.status(400).json({ error: 'Database tables do not match the expected schema.' });
     }
+    const hasAutoReplied = tables.has('auto_replied');
+    const hasIncomingMessages = tables.has('incoming_messages');
+    if (hasAutoReplied && !['phone', 'replied_at'].every(col => new Set(source.prepare('PRAGMA table_info(auto_replied)').all().map(row => row.name)).has(col))) {
+      return res.status(400).json({ error: 'Database auto-reply memory table does not match the expected schema.' });
+    }
+    if (hasIncomingMessages && !['message_id', 'phone', 'received_at'].every(col => new Set(source.prepare('PRAGMA table_info(incoming_messages)').all().map(row => row.name)).has(col))) {
+      return res.status(400).json({ error: 'Database incoming-message table does not match the expected schema.' });
+    }
     const incomingNumbers = source.prepare('SELECT phone, template, status, sent_at, error FROM sent_numbers').all();
     const incomingLogs = source.prepare('SELECT timestamp, phone, action, details FROM logs').all();
+    const incomingAutoReplied = hasAutoReplied ? source.prepare('SELECT phone, replied_at FROM auto_replied').all() : [];
+    const incomingMessages = hasIncomingMessages ? source.prepare('SELECT message_id, phone, received_at FROM incoming_messages').all() : [];
     const mergeNumber = db.prepare(`INSERT INTO sent_numbers(phone, template, status, sent_at, error) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(phone) DO UPDATE SET
         sent_at = CASE WHEN excluded.sent_at < sent_numbers.sent_at THEN excluded.sent_at ELSE sent_numbers.sent_at END,
@@ -538,6 +567,18 @@ app.post('/api/database/import', requireAuth, uploadDb.single('database'), (req,
       for (const row of incomingLogs) {
         if (!Number.isFinite(Date.parse(row.timestamp)) || !['sent', 'failed', 'skipped', 'reply_sent', 'import', 'export'].includes(row.action)) continue;
         insertLog.run(row.timestamp, row.phone || '', row.action, row.details || '', row.timestamp, row.phone || '', row.action, row.details || '');
+      }
+      const mergeAutoReplied = db.prepare(`INSERT INTO auto_replied(phone, replied_at) VALUES (?, ?)
+        ON CONFLICT(phone) DO UPDATE SET replied_at=excluded.replied_at WHERE excluded.replied_at > auto_replied.replied_at`);
+      for (const row of incomingAutoReplied) {
+        const phone = String(row.phone || '').replace(/\D/g, '');
+        if (phone && Number.isFinite(Date.parse(row.replied_at))) mergeAutoReplied.run(phone, new Date(row.replied_at).toISOString());
+      }
+      const mergeIncomingMessage = db.prepare('INSERT OR IGNORE INTO incoming_messages(message_id, phone, received_at) VALUES (?, ?, ?)');
+      for (const row of incomingMessages) {
+        if (row.message_id && Number.isFinite(Date.parse(row.received_at))) {
+          mergeIncomingMessage.run(String(row.message_id), String(row.phone || '').replace(/\D/g, ''), new Date(row.received_at).toISOString());
+        }
       }
     });
     transaction();
@@ -573,6 +614,17 @@ app.post('/api/config', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/auto-reply/reset-memory', requireAuth, (req, res) => {
+  try {
+    const result = db.prepare('DELETE FROM auto_replied').run();
+    addLog({ action: 'webhook', details: `Auto-reply memory reset · ${result.changes} number(s) cleared` });
+    res.json({ status: 'ok', cleared: result.changes });
+  } catch (error) {
+    console.error('[Auto-reply Memory Reset Error]', error);
+    res.status(500).json({ error: 'Could not reset auto-reply memory.' });
+  }
+});
+
 // Get Monthly Stats & Limit
 app.get('/api/stats', requireAuth, async (req, res) => {
   try {
@@ -594,6 +646,11 @@ app.get('/api/stats', requireAuth, async (req, res) => {
 app.get('/api/recipients', requireAuth, async (req, res) => {
   try {
     const summary = await getRecipientsSummary();
+    const hasAutoReplied = db.prepare('SELECT 1 FROM auto_replied WHERE phone=?');
+    summary.recipients = summary.recipients.map(recipient => ({
+      ...recipient,
+      autoReplied: Boolean(hasAutoReplied.get(normalizePhone(recipient.phone)))
+    }));
     res.json(summary);
   } catch (err) {
     res.status(500).json({ error: err.message });
