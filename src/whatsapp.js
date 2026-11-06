@@ -266,7 +266,7 @@ export async function sendConfiguredAutoReply({ to, autoReplyConfig }) {
   if (type === 'link' || (!type && config.link?.url)) {
     const linkUrl = config.link?.url || 'https://discord.gg/zMVN8ZmqTP';
     const linkTitle = config.link?.title || 'Discord';
-    const messageText = config.text || "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District";
+    const messageText = config.text || "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District";
 
     return callMetaGraphApi({
       messaging_product: 'whatsapp',
@@ -338,7 +338,7 @@ export async function sendConfiguredAutoReply({ to, autoReplyConfig }) {
     type: 'text',
     text: {
       preview_url: false,
-      body: config.text || "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
+      body: config.text || "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
     }
   });
 }

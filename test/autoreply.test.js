@@ -12,7 +12,7 @@ test('loadConfig provides the default CTA Link Button auto-reply configuration',
   assert.equal(config.autoReply.type, 'link');
   assert.equal(
     config.autoReply.text,
-    "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
+    "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
   );
   assert.deepEqual(config.autoReply.link, {
     title: 'Discord',
@@ -49,7 +49,7 @@ test('sendConfiguredAutoReply formats the CTA URL payload correctly for Meta Gra
     assert.equal(interceptedPayload.interactive.type, 'cta_url');
     assert.equal(
       interceptedPayload.interactive.body.text,
-      "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
+      "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
     );
     assert.equal(interceptedPayload.interactive.footer, undefined, 'No footer should be sent');
     assert.deepEqual(interceptedPayload, {
@@ -60,7 +60,7 @@ test('sendConfiguredAutoReply formats the CTA URL payload correctly for Meta Gra
       interactive: {
         type: 'cta_url',
         body: {
-          text: "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
+          text: "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District"
         },
         action: {
           name: 'cta_url',

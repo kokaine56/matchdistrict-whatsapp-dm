@@ -852,7 +852,7 @@ if (autoReplyToggle) {
   });
 }
 
-const DEFAULT_AUTOREPLY_TEXT = "🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District";
+const DEFAULT_AUTOREPLY_TEXT = "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District";
 const DEFAULT_AUTOREPLY_BUTTON_TEXT = 'Discord';
 const DEFAULT_AUTOREPLY_BUTTON_URL = 'https://discord.gg/zMVN8ZmqTP';
 
