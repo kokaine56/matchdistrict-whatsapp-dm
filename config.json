@@ -4,23 +4,20 @@
     "template": "hello",
     "languageCode": "en_US",
     "headerImageUrl": "",
-    "bodyVariables": [
-      
-    ],
+    "bodyVariables": [],
     "urlButtonValue": "",
     "quickReplyPayloads": [
       "YES",
       "NO"
-    ]
+    ],
+    "headers": {}
   },
   "autoReply": {
     "type": "link",
     "text": "BGMI TOURNAMENT\n🏆 PRIZE POOL – ₹10,000\n🔥 REGISTRATION LIVE!\nSecure your spot now. Join ASAP and compete for the prize!\n\nRegister Now | Match District",
     "imageUrl": "",
     "caption": "",
-    "buttons": [
-      
-    ],
+    "buttons": [],
     "link": {
       "title": "Discord",
       "url": "https://discord.gg/zMVN8ZmqTP"
